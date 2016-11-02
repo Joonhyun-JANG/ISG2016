@@ -229,7 +229,7 @@ int main(int argc, char** argv) {
 				if (src_gray.at<unsigned char>(i, j)<BlackThres) {
 					src_gray.at<unsigned char>(i, j) = 0;
 				}
-				else if (src_gray.at<unsigned char>(i, j)>lowWhiteThres) {
+				else if (src_gray.at<unsigned char>(i, j)>WhiteThres) {
 					src_gray.at<unsigned char>(i, j) = 255;
 				}
 				else {
@@ -341,7 +341,7 @@ int main(int argc, char** argv) {
 		createTrackbar("Green Max:", "Hue", &highGreenThres, 255, on_trackbar);
 		createTrackbar("Green Diff:", "Hue", &diffGreenThres, 255, on_trackbar);
 
-		threshold(src, src, 0, lowBlackThres, CV_THRESH_BINARY);
+		threshold(src, src, 0, BlackThres, CV_THRESH_BINARY);
 		imshow("Grayscale", src_gray);
 		createTrackbar("Black Threshold:", "Grayscale", &BlackThres, 255, on_trackbar);
 		createTrackbar("White Threshold:", "Grayscale", &WhiteThres, 255, on_trackbar);
@@ -407,8 +407,8 @@ void save_settings() {
 	fprintf(fp, "%d\n", highGreenThres);
 	fprintf(fp, "%d\n", diffGreenThres);
 
-	fprintf(fp, "%d\n", lowBlackThres);
-	fprintf(fp, "%d\n", lowWhiteThres);
+	fprintf(fp, "%d\n", BlackThres);
+	fprintf(fp, "%d\n", WhiteThres);
 	fprintf(fp, "%d\n", lowThreshold);
 
 	fclose(fp);
