@@ -18,7 +18,7 @@ using namespace cv;
 #define WIDTH	320
 #define HEIGHT	240
 
-Mat src, src_gray, src_gray_tmp, img_scene, src_HSV, src_H, src_S, src_V;
+Mat src, src_gray, src_gray_tmp, img_scene, src_HSV, src_H, src_S, src_V, src_ball;
 Mat milk1;
 Mat dst, detected_edges, ROI;
 
@@ -31,16 +31,15 @@ int const max_lowThreshold = 100;
 int ratio = 3;
 int kernel_size = 3;
 int green_cnt[6][8] = { 0, }, red_cnt[6][8] = { 0, }, edge_distance[7] = { 10,60,110,160,210,260,310 }, edge_L = 0, edge_R = 0;
+int ball_cnt_x[HEIGHT]={0,}, ball_cnt_y[WIDTH]={0,};
 int a = 0, look_at = 0;
 VideoCapture cap(-1);
 
 FILE *fp;
 
-
-char* window_name = "Edge Map";
-
 void load_settings();
 void save_settings();
+void detect_ball();
 
 /**
 * @function CannyThreshold
@@ -113,7 +112,7 @@ int main(int argc, char** argv) {
 	load_settings();
 
 	// Create a window
-	namedWindow(window_name, CV_WINDOW_AUTOSIZE);
+	namedWindow("Edge Map", CV_WINDOW_AUTOSIZE);
 	namedWindow("Output", CV_WINDOW_AUTOSIZE);
 
 	serialPutchar(fd, 62); // init for looking foward
@@ -131,14 +130,15 @@ int main(int argc, char** argv) {
 
 		cvtColor(src, src_gray, CV_BGR2GRAY);
 		cvtColor(src, src_HSV, COLOR_BGR2HSV);
+		src.copyTo(src_ball);
 
 		// Create a matrix of the same type and size as src (for dst)
 		dst.create(src.size(), src.type());
 		src_gray_tmp.create(src_gray.size(), src_gray.type());
-		createTrackbar("Min Threshold:", window_name, &lowThreshold, max_lowThreshold, CannyThreshold);
+		createTrackbar("Min Threshold:", "Edge Map", &lowThreshold, max_lowThreshold, CannyThreshold);
 
 		// Create a Trackbar for user to enter threshold
-		//  createTrackbar( "Max Threshold:", window_name, &lowThreshold, max_lowThreshold, CannyThreshold );
+		//  createTrackbar( "Max Threshold:", "Edge Map", &lowThreshold, max_lowThreshold, CannyThreshold );
 		// Show the image
 		CannyThreshold(0, 0);
 
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
 		string str_R = ss_R.str();
 
 		putText(dst, str_R, Point2f(185, 100), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
-		imshow(window_name, dst);
+		imshow("Edge Map", dst);
 		imshow("Output", src);
 
 
@@ -185,6 +185,7 @@ int main(int argc, char** argv) {
 		for (int i = 0; i<HEIGHT; i++) {
 			for (int j = 0; j<WIDTH; j++) {
 				if (src_HSV.at<Vec3b>(i, j).val[0]<lowRedThres || src_HSV.at<Vec3b>(i, j).val[0]>highRedThres) {
+				// find RED
 					int BG_tmp;
 					BG_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[1]) / 2;
 					if ((src.at<Vec3b>(i, j).val[2] - BG_tmp)>diffRedThres) {
@@ -192,6 +193,12 @@ int main(int argc, char** argv) {
 						src.at<Vec3b>(i, j).val[1] = 0;
 						src.at<Vec3b>(i, j).val[2] = 255;
 						red_cnt[i / 40][j / 40]++;
+
+						ball_cnt_x[i]++;
+						ball_cnt_y[j]++;
+						src_ball.at<Vec3b>(i, j).val[0] = 0;
+						src_ball.at<Vec3b>(i, j).val[1] = 0;
+						src_ball.at<Vec3b>(i, j).val[2] = 255;
 					}
 					else {
 						src.at<Vec3b>(i, j).val[0] = 0;
@@ -237,6 +244,8 @@ int main(int argc, char** argv) {
 				}
 			}
 		}
+
+		detect_ball();
 
 		//ROI = fullImage(Rect(G_x_min, G_y_min, G_x_max-G_x_min, G_y_max-G_y_min));
 		if (G_x_max - G_x_min>0 && G_y_max - G_y_min>0) {
@@ -334,6 +343,7 @@ int main(int argc, char** argv) {
 
 		}
 		imshow("Hue", src);
+		
 		createTrackbar("Red Min:", "Hue", &lowRedThres, 255, on_trackbar);
 		createTrackbar("Red Max:", "Hue", &highRedThres, 255, on_trackbar);
 		createTrackbar("Red Diff:", "Hue", &diffRedThres, 255, on_trackbar);
@@ -379,7 +389,33 @@ int main(int argc, char** argv) {
 }
 
 
+void detect_ball(){
+	int i_max=0, i_max_i=0, j_max=0, j_max_i=0;
+	for(int j=0;j<WIDTH;j++){
+		if(j_max<=ball_cnt_y[j]){
+				j_max = ball_cnt_y[j];
+				j_max_i = j;		
+		}
+		ball_cnt_y[j] = 0;
+	}
 
+	for(int i=0;i<HEIGHT;i++){				
+		if(ball_cnt_x[i]<j_max+30 && ball_cnt_x[i]>j_max-30){
+			for(int j=0;j<WIDTH;j++){
+				if(src_ball.at<Vec3b>(i, j).val[0]==0 && src_ball.at<Vec3b>(i, j).val[1]==0 && src_ball.at<Vec3b>(i, j).val[2]==255){
+
+					src_ball.at<Vec3b>(i, j).val[0] = 255;
+					src_ball.at<Vec3b>(i, j).val[1] = 0;
+					src_ball.at<Vec3b>(i, j).val[2] = 0;
+				}
+			}
+		}
+		ball_cnt_x[i] = 0;
+	}
+
+	imshow("ball", src_ball);
+
+}
 
 void load_settings() {
 	fp = fopen("./threshold.txt", "r");
