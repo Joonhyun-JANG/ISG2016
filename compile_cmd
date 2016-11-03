@@ -1,4 +1,1 @@
-g++ -lopencv_core -lopencv_highgui -L/usr/lib/uv4l/uv4lext/armv6l -luv4lext -Wl,-rpath,'/usr/lib/uv4l/uv4lext/armv6l' opencv_test.cpp -o opencv_test
-
-
-g++ -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_calib3d -lopencv_features2d -lopencv_nonfree -lwiringPi -lopencv_flann -lopencv_objdetect -L/usr/lib/uv4l/uv4lext/armv6l -luv4lext -Wl,-rpath,'/usr/lib/uv4l/uv4lext/armv6l' ./haar_detect.cpp -o haar_detect
+g++ -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_calib3d -lopencv_features2d -lopencv_nonfree -lwiringPi -lopencv_flann -lopencv_objdetect -L/usr/lib/uv4l/uv4lext/armv6l -luv4lext -Wl,-rpath,'/usr/lib/uv4l/uv4lext/armv6l' ./main.cpp -o main
