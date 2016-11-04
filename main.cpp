@@ -35,6 +35,15 @@ int ball_cnt_x[HEIGHT]={0,}, ball_cnt_y[WIDTH]={0,};
 int a = 0, look_at = 0;
 VideoCapture cap(-1);
 
+
+int cannyThreshold = 200, maxCannyThreshold = 255;
+int accumulatorThreshold = 50, maxAccumulatorThreshold = 200;
+
+    const std::string windowName = "Hough Circle Detection Demo";
+    const std::string cannyThresholdTrackbarName = "Canny threshold";
+    const std::string accumulatorThresholdTrackbarName = "Accumulator Threshold";
+
+
 FILE *fp;
 
 void load_settings();
@@ -106,10 +115,17 @@ int initialize() {
 	return 1;
 }
 
+void make_windows(){
+	namedWindow("find_ball", WINDOW_AUTOSIZE );
+	createTrackbar(cannyThresholdTrackbarName, "find_ball", &cannyThreshold,maxCannyThreshold);
+    createTrackbar(accumulatorThresholdTrackbarName, "find_ball", &accumulatorThreshold, maxAccumulatorThreshold);
 
+}
+ 
 int main(int argc, char** argv) {
 	if (initialize() == -1) return -1;
 	load_settings();
+	make_windows();
 
 	// Create a window
 	namedWindow("Edge Map", CV_WINDOW_AUTOSIZE);
@@ -287,59 +303,59 @@ int main(int argc, char** argv) {
 			if (red_max_index[1] == 3 && a == 0) {
 				serialPutchar(fd, 84);
 				a = -1;
-				cout << "go to the ball" << endl;
+				//cout << "go to the ball" << endl;
 			}
 		}
-		cout << "!" << a << endl;
+		//cout << "!" << a << endl;
 		//cout << "i: " << green_max_index[0] << " j: " << green_max_index[1] << " max: " << green_max << endl;
 		if (green_max_index[1]<3 && green_max>100 && a == 0) {
 			serialPutchar(fd, 49); // 
 			a = -1;
-			cout << "move left" << endl;
+			//cout << "move left" << endl;
 		}
 		if (green_max_index[0]>3 && green_max>100 && a == 0 && look_at == 0) {
 			serialPutchar(fd, 62); // 
 			a = -1;
 			look_at = -1;
-			cout << "look at down" << endl;
+			//cout << "look at down" << endl;
 		}
 
 		if (green_max_index[1]>4 && green_max>100 && a == 0) {
 			serialPutchar(fd, 42); // 
 			a = -1;
-			cout << "move right" << endl;
+			//cout << "move right" << endl;
 		}
 
 		if (look_at != 0 && green_max < 100 && a == 0) {
 			serialPutchar(fd, 61); // 
 			a = -1;
 			look_at = 0;
-			cout << "look at foward" << endl;
+			//cout << "look at foward" << endl;
 		}
 		if (look_at == -1 && green_max > 100 && a == 0 && (green_max_index[1] == 3 || green_max_index[1] == 4) && green_max_index[0]<2) {
 			serialPutchar(fd, 65);
 			a = -1;
-			cout << "move foward" << endl;
+			//cout << "move foward" << endl;
 		}
 		if (look_at == 0 && green_max > 100 && a == 0 && green_max_index[0] <= 3) {
 			serialPutchar(fd, 65);
 			a = -1;
-			cout << "move foward" << endl;
+			//cout << "move foward" << endl;
 		}
 		if (look_at == -1 && green_max > 100 && a == 0 && (green_max_index[1] == 3 || green_max_index[1] == 4) && (green_max_index[0] >= 2)) {
 			serialPutchar(fd, 71); // 
 			a = -1;
-			cout << "hold milk" << endl;
+			//cout << "hold milk" << endl;
 		}
 		if (edge_L - edge_R>20) {
 			serialPutchar(fd, 37); // 
 			a = -1;
-			cout << "Right" << endl;
+			//cout << "Right" << endl;
 		}
 		if (edge_R - edge_L>20) {
 			serialPutchar(fd, 44); // 
 			a = -1;
-			cout << "Left" << endl;
+			//cout << "Left" << endl;
 
 		}
 		imshow("Hue", src);
@@ -365,7 +381,7 @@ int main(int argc, char** argv) {
 			//printf("ready\n");
 			printf("!%d\n", fd);
 			a = serialGetchar(fd);
-			printf(" -> %3d\n", a);
+			//printf(" -> %3d\n", a);
 			a = -2;
 			fflush(stdout);
 		}
@@ -390,8 +406,7 @@ int main(int argc, char** argv) {
 
 
 void detect_ball(){
-/*
-	int i_max=0, i_max_i=0, j_max=0, j_max_i=0;
+/*	int i_max=0, i_max_i=0, j_max=0, j_max_i=0;
 	for(int j=0;j<WIDTH;j++){
 		if(j_max<=ball_cnt_y[j]){
 				j_max = ball_cnt_y[j];
@@ -399,38 +414,56 @@ void detect_ball(){
 		}
 		ball_cnt_y[j] = 0;
 	}
-
+*/
 	for(int i=0;i<HEIGHT;i++){				
-		if(ball_cnt_x[i]<j_max+30 && ball_cnt_x[i]>j_max-30){
+		//if(ball_cnt_x[i]<j_max+30 && ball_cnt_x[i]>j_max-30){
 			for(int j=0;j<WIDTH;j++){
-				if(src_ball.at<Vec3b>(i, j).val[0]==0 && src_ball.at<Vec3b>(i, j).val[1]==0 && src_ball.at<Vec3b>(i, j).val[2]==255){
-
-					src_ball.at<Vec3b>(i, j).val[0] = 255;
+				if(!(src_ball.at<Vec3b>(i, j).val[0]==0 && src_ball.at<Vec3b>(i, j).val[1]==0 && src_ball.at<Vec3b>(i, j).val[2]==255)){
+					src_ball.at<Vec3b>(i, j).val[0] = 0;
 					src_ball.at<Vec3b>(i, j).val[1] = 0;
 					src_ball.at<Vec3b>(i, j).val[2] = 0;
 				}
 			}
-		}
-		ball_cnt_x[i] = 0;
+		//}
+//		ball_cnt_x[i] = 0;
 	}
-*/
 
-	cvtColor(src_ball, src_ball_gray, CV_BGR2GRAY);
-	GaussianBlur(src_ball_gray, src_ball_gray, Size(9,9), 2, 2);
 
-	vector<Vec3f> circles;
+	    cvtColor(src_ball, src_ball_gray, COLOR_BGR2GRAY );
 
-	HoughCircles(src_ball_gray, circles, CV_HOUGH_GRADIENT, 1, src_ball_gray.rows/8, 200, 100, 0, 0);
+		// Reduce the noise so we avoid false circle detection
+	    GaussianBlur(src_ball, src_ball_gray, Size(9, 9), 2, 2 );
 
-	for(int i=0;i<circles.size();i++){
-		Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
-		int radius = cvRound(circles[i][2]);
+		cannyThreshold = std::max(cannyThreshold, 1);
+        accumulatorThreshold = std::max(accumulatorThreshold, 1);
 
-		circle(src_ball, center, 3, Scalar(0,255,0), -1, 8, 0);
-		circle(src_ball, center, radius, Scalar(255,0,0), 3, 8, 0);
-	}
-	imshow("ball", src_ball);
+        //runs the detection, and update the display
+        HoughDetection(src_ball_gray, src_ball, cannyThreshold, accumulatorThreshold);
+}
 
+
+void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThreshold, int accumulatorThreshold)
+    {
+        // will hold the results of the detection
+        std::vector<Vec3f> circles;
+        // runs the actual detection
+        HoughCircles( src_gray, circles, CV_HOUGH_GRADIENT, 1, src_gray.rows/8, cannyThreshold, accumulatorThreshold, 0, 0 );
+
+        // clone the colour, input image for displaying purposes
+        Mat display = src_display.clone();
+        for( size_t i = 0; i < circles.size(); i++ )
+        {
+            Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
+            int radius = cvRound(circles[i][2]);
+            // circle center
+            circle( display, center, 3, Scalar(0,255,0), -1, 8, 0 );
+            // circle outline
+            circle( display, center, radius, Scalar(0,0,255), 3, 8, 0 );
+        }
+
+        // shows the results
+        imshow("find_ball", display);
+    }
 }
 
 void load_settings() {
