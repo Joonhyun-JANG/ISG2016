@@ -100,7 +100,7 @@ int main(int argc, char** argv)
 
     // Reduce the noise so we avoid false circle detection
     GaussianBlur( src_gray, src_gray, Size(9, 9), 2, 2 );
-
+		imshow("test", src_gray);
 
 		if (!bSuccess)
 		{

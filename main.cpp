@@ -6,17 +6,23 @@
 #include "opencv2/imgproc/imgproc.hpp"
 
 #include <iostream>
+#include <iomanip>
+
 #include <wiringPi.h>
 #include <wiringSerial.h>
 
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
+
 
 using namespace std;
 using namespace cv;
 
 #define WIDTH	320
 #define HEIGHT	240
+#define PI 3.1415926
+
 
 Mat src, src_gray, src_gray_tmp, img_scene, src_HSV, src_H, src_S, src_V, src_ball, src_ball_gray;
 Mat milk1;
@@ -30,7 +36,7 @@ int diffRedThres = 0, diffGreenThres = 0;
 int const max_lowThreshold = 100;
 int ratio = 3;
 int kernel_size = 3;
-int green_cnt[6][8] = { 0, }, red_cnt[6][8] = { 0, }, edge_distance[7] = { 10,60,110,160,210,260,310 }, edge_L = 0, edge_R = 0;
+int green_cnt[3][4] = { 0, }, red_cnt[6][8] = { 0, }, edge_distance[7] = { 10,60,110,160,210,260,310 }, edge_L = 0, edge_R = 0;
 int ball_cnt_x[HEIGHT]={0,}, ball_cnt_y[WIDTH]={0,};
 int a = 0, look_at = 0;
 VideoCapture cap(-1);
@@ -49,6 +55,8 @@ FILE *fp;
 void load_settings();
 void save_settings();
 void detect_ball();
+void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThreshold, int accumulatorThreshold);
+
 
 /**
 * @function CannyThreshold
@@ -187,8 +195,8 @@ int main(int argc, char** argv) {
 		stringstream ss_R;
 		ss_R << edge_R;
 		string str_R = ss_R.str();
-
 		putText(dst, str_R, Point2f(185, 100), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
+
 		imshow("Edge Map", dst);
 		imshow("Output", src);
 
@@ -212,8 +220,8 @@ int main(int argc, char** argv) {
 
 						//ball_cnt_x[i]++;
 						//ball_cnt_y[j]++;
-						src_ball.at<Vec3b>(i, j).val[0] = 0;
-						src_ball.at<Vec3b>(i, j).val[1] = 0;
+						src_ball.at<Vec3b>(i, j).val[0] = 255;
+						src_ball.at<Vec3b>(i, j).val[1] = 255;
 						src_ball.at<Vec3b>(i, j).val[2] = 255;
 					}
 					else {
@@ -230,7 +238,7 @@ int main(int argc, char** argv) {
 						src.at<Vec3b>(i, j).val[0] = 0;
 						src.at<Vec3b>(i, j).val[1] = 255;
 						src.at<Vec3b>(i, j).val[2] = 0;
-						green_cnt[i / 40][j / 40]++;
+						green_cnt[i / 80][j / 80]++;
 						if (G_x_min>j) G_x_min = j;
 						if (G_x_max<j) G_x_max = j;
 						if (G_y_min>i) G_y_min = i;
@@ -269,21 +277,21 @@ int main(int argc, char** argv) {
 			imshow("ROI", ROI);
 			//cout << "a";
 		}
-		for (int i = 40; i<WIDTH; i += 40) {
-			line(src, Point2f(i, 0), Point2f(i, 239), Scalar(255, 0, 0), 1);
+		for (int i = 80; i<WIDTH; i += 80) {
+			line(src, Point2f(i, 0), Point2f(i, HEIGHT-1), Scalar(255, 0, 0), 1);
 		}
-		for (int j = 40; j<HEIGHT; j += 40) {
-			line(src, Point2f(0, j), Point2f(319, j), Scalar(255, 0, 0), 1);
+		for (int j = 80; j<HEIGHT; j += 80) {
+			line(src, Point2f(0, j), Point2f(WIDTH-1, j), Scalar(255, 0, 0), 1);
 		}
 
 		int green_max = 0, green_max_index[2] = { 0, };
 		int red_max = 0, red_max_index[2] = { 0, };
-		for (int i = 0; i<6; i++) {
-			for (int j = 0; j<8; j++) {
-				if (i<6 - 1 && j<8 - 1 && green_max<(green_cnt[i][j] + green_cnt[i][j + 1] + green_cnt[i + 1][j] + green_cnt[i + 1][j + 1])) {
+		for (int i = 0; i<3; i++) {
+			for (int j = 0; j<4; j++) {
+				if (green_max < green_cnt[i][j]) {
 					green_max_index[0] = i;
 					green_max_index[1] = j;
-					green_max = green_cnt[i][j] + green_cnt[i][j + 1] + green_cnt[i + 1][j] + green_cnt[i + 1][j + 1];
+					green_max = green_cnt[i][j];
 				}
 				if (i<6 - 1 && j<8 - 1 && red_max<(red_cnt[i][j] + red_cnt[i][j + 1] + red_cnt[i + 1][j] + red_cnt[i + 1][j + 1])) {
 					red_max_index[0] = i;
@@ -293,10 +301,13 @@ int main(int argc, char** argv) {
 				stringstream ss;
 				ss << green_cnt[i][j];
 				string str = ss.str();
-				putText(src, str, Point2f(j * 40, (i + 1) * 40), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
+				putText(src, str, Point2f(j * 80, (i + 1) * 80), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
 			}
 		}
-		rectangle(src, Point(green_max_index[1] * 40, green_max_index[0] * 40), Point(green_max_index[1] * 40 + 80, green_max_index[0] * 40 + 80), Scalar(255, 255, 255), 0, 8);
+
+
+		rectangle(src, Point(green_max_index[1] * 80, green_max_index[0] * 80), Point(green_max_index[1] * 80 + 80, green_max_index[0] * 80 + 80), Scalar(128, 128, 0), 0, 8);
+	
 		if (red_max>1700) {
 			rectangle(src, Point(red_max_index[1] * 40, red_max_index[0] * 40), Point(red_max_index[1] * 40 + 80, red_max_index[0] * 40 + 80), Scalar(0, 255, 255), 0, 8);
 			//cout << red_max_index[0] << " " << red_max_index[1] << endl;
@@ -415,10 +426,14 @@ void detect_ball(){
 		ball_cnt_y[j] = 0;
 	}
 */
+
+
+
+	
 	for(int i=0;i<HEIGHT;i++){				
 		//if(ball_cnt_x[i]<j_max+30 && ball_cnt_x[i]>j_max-30){
 			for(int j=0;j<WIDTH;j++){
-				if(!(src_ball.at<Vec3b>(i, j).val[0]==0 && src_ball.at<Vec3b>(i, j).val[1]==0 && src_ball.at<Vec3b>(i, j).val[2]==255)){
+				if(!(src_ball.at<Vec3b>(i, j).val[0]==255 && src_ball.at<Vec3b>(i, j).val[1]==255 && src_ball.at<Vec3b>(i, j).val[2]==255)){
 					src_ball.at<Vec3b>(i, j).val[0] = 0;
 					src_ball.at<Vec3b>(i, j).val[1] = 0;
 					src_ball.at<Vec3b>(i, j).val[2] = 0;
@@ -427,13 +442,57 @@ void detect_ball(){
 		//}
 //		ball_cnt_x[i] = 0;
 	}
+//////////////////////////////////////////////////////////////////////////////////////
+		Mat src_line;
+		src_ball.copyTo(src_line);
+
+cv::Mat contours;
+ cv::Canny(src_line, contours, 125, 350);
+
+
+  // 선 감지 위한 허프 변환
+ std::vector<cv::Vec2f> lines;
+ cv::HoughLines(contours, lines, 
+     1,PI/180, // 단계별 크기
+     80);  // 투표(vote) 최대 개수
+
+  // 선 그리기
+ cv::Mat result(contours.rows, contours.cols, CV_8U, cv::Scalar(255));
+ std::cout << "Lines detected: " << lines.size() << std::endl;
+
+  // 선 벡터를 반복해 선 그리기
+ std::vector<cv::Vec2f>::const_iterator it= lines.begin();
+ while (it!=lines.end()) {
+  float rho = (*it)[0];   // 첫 번째 요소는 rho 거리
+  float theta = (*it)[1]; // 두 번째 요소는 델타 각도
+  if (theta < PI/4. || theta > 3.*PI/4.) { // 수직 행
+   cv::Point pt1(rho/cos(theta), 0); // 첫 행에서 해당 선의 교차점   
+   cv::Point pt2((rho-result.rows*sin(theta))/cos(theta), result.rows);
+    // 마지막 행에서 해당 선의 교차점
+   cv::line(src_line, pt1, pt2, cv::Scalar(255), 1); // 하얀 선으로 그리기
+
+   } else { // 수평 행
+   cv::Point pt1(0,rho/sin(theta)); // 첫 번째 열에서 해당 선의 교차점  
+   cv::Point pt2(result.cols,(rho-result.cols*cos(theta))/sin(theta));
+    // 마지막 열에서 해당 선의 교차점
+   cv::line(src_line, pt1, pt2, cv::Scalar(0,0,255), 1); // 하얀 선으로 그리기
+	std::cout << "line: (" << " " << pt1.x << " " << pt1.y << " " << pt2.x << " " << pt2.y << "," << theta*57.3 << ")\n"; 
+  }
+  //std::cout << "line: (" << pt1.x << "," << theta << ")\n"; 
+  ++it;
+ }
+
+
+		imshow("test2", src_line);
+
+//////////////////////////////////////////////////////////////////////////////////////
 
 
 	    cvtColor(src_ball, src_ball_gray, COLOR_BGR2GRAY );
-
+		
 		// Reduce the noise so we avoid false circle detection
-	    GaussianBlur(src_ball, src_ball_gray, Size(9, 9), 2, 2 );
-
+	    GaussianBlur(src_ball_gray, src_ball_gray, Size(9, 9), 2, 2 );
+		
 		cannyThreshold = std::max(cannyThreshold, 1);
         accumulatorThreshold = std::max(accumulatorThreshold, 1);
 
@@ -451,19 +510,45 @@ void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThresh
 
         // clone the colour, input image for displaying purposes
         Mat display = src_display.clone();
-        for( size_t i = 0; i < circles.size(); i++ )
+				printf("%d\n", circles.size());
+
+        int max_radius = 0, max_r_i = 0; // added by joon
+
+				for( size_t i = 0; i < circles.size(); i++ )
         {
-            Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
             int radius = cvRound(circles[i][2]);
-            // circle center
+        		if(max_radius <= radius){
+							max_radius = radius;
+							max_r_i = i;		
+						}
+        }
+				
+				if(circles.size()>0){
+				    Point center(cvRound(circles[max_r_i][0]), cvRound(circles[max_r_i][1]));
+            int radius = cvRound(circles[max_r_i][2]);
+            // circle centery
             circle( display, center, 3, Scalar(0,255,0), -1, 8, 0 );
             // circle outline
             circle( display, center, radius, Scalar(0,0,255), 3, 8, 0 );
-        }
+			line(display, Point2f(WIDTH/2, HEIGHT-1), center, Scalar(0, 255, 255), 1);
+			if(center.x<WIDTH/2){
+				double ball_degree;
+				ball_degree = atan((HEIGHT-center.y)/(WIDTH/2-center.x))*57.3;
+				cout << "!" << center.y << " " << center.x << endl;
+				stringstream ss_ball_degree;
+				ss_ball_degree << setprecision(1) << fixed<< ball_degree;
+				string str_ball_degree = ss_ball_degree.str();
+				putText(display, str_ball_degree, Point2f(WIDTH/2 + 10, HEIGHT-10), FONT_HERSHEY_PLAIN, 1.5, Scalar(255, 255, 255), 1, 8, false);
+
+			}
+			else{
+
+			}
+			}
 
         // shows the results
+		
         imshow("find_ball", display);
-    }
 }
 
 void load_settings() {
