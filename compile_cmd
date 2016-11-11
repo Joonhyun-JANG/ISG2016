@@ -1,1 +1,1 @@
-g++ -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_calib3d -lopencv_features2d -lopencv_nonfree -lwiringPi -lopencv_flann -lopencv_objdetect -L/usr/lib/uv4l/uv4lext/armv6l -luv4lext -Wl,-rpath,'/usr/lib/uv4l/uv4lext/armv6l' ./main.cpp -o main
+g++ -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_calib3d -lopencv_features2d -lopencv_nonfree -lwiringPi -lopencv_flann -lopencv_objdetect -L/usr/lib/uv4l/uv4lext/armv6l -luv4lext -Wl,-rpath,'/usr/lib/uv4l/uv4lext/armv6l' ./ISG2016_deca.cpp -o ISG2016_deca

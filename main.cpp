@@ -36,7 +36,7 @@ int diffRedThres = 0, diffGreenThres = 0;
 int const max_lowThreshold = 100;
 int ratio = 3;
 int kernel_size = 3;
-int green_cnt[3][4] = { 0, }, red_cnt[6][8] = { 0, }, edge_distance[7] = { 10,60,110,160,210,260,310 }, edge_L = 0, edge_R = 0;
+int green_cnt[3][4] = { 0, }, red_cnt[3][4] = { 0, }, edge_distance[7] = { 10,60,110,160,210,260,310 }, edge_L = 0, edge_R = 0;
 int ball_cnt_x[HEIGHT]={0,}, ball_cnt_y[WIDTH]={0,};
 int a = 0, look_at = 0;
 VideoCapture cap(-1);
@@ -54,7 +54,7 @@ FILE *fp;
 
 void load_settings();
 void save_settings();
-void detect_ball();
+void detect_ball_line();
 void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThreshold, int accumulatorThreshold);
 
 
@@ -85,16 +85,57 @@ void on_trackbar(int, void*)
 // 외곽선 검출을 위한 Canny Edge detector
 void CannyThreshold(int, void*)
 {
-	/// Reduce noise with a kernel 3x3
-	blur(src_gray, detected_edges, Size(3, 3));
+	vector<vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+	Mat drawing;
+	int refinery_count = 0;
 
-	/// Canny detector
-	Canny(detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size);
+  blur( src_gray, detected_edges, Size(3,3) );
 
-	/// Using Canny's output as a mask, we display our result
-	dst = Scalar::all(0);
+  /// Canny detector
+  Canny( detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size );
 
-	src.copyTo(dst, detected_edges);
+  /// Using Canny's output as a mask, we display our result
+  dst = Scalar::all(0);
+
+  src.copyTo( dst, detected_edges);
+
+	imshow("ROI_test2", dst);
+
+	detected_edges.copyTo(dst);
+
+	findContours(dst, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point());
+	vector<vector<Point> > contours_poly(contours.size());
+	vector<Rect> boundRect(contours.size());
+	vector<Rect> boundRect2(contours.size());
+
+	dst.copyTo(drawing);
+
+	for(int i = 0; i<contours.size(); i++){
+		approxPolyDP(Mat(contours[i]), contours_poly[i], 1, true);
+		boundRect[i] = boundingRect(Mat(contours_poly[i]));
+		if(boundRect[i].height > 20 && boundRect[i].height <100)
+		rectangle(drawing, boundRect[i].tl(), boundRect[i].br(), Scalar(255,0,0), 1, 8, 0);
+
+
+	}
+
+
+	for(int i = 0; i<contours.size(); i++){
+		ratio = (double) boundRect[i].height / boundRect[i].width;
+		
+		if((ratio <= 2.0) && (ratio >= 1.3) && (boundRect[i].area() <= 2000) && (boundRect[i].area() >= 200)){
+			drawContours(drawing, contours, i, Scalar(0,255,255), 1, 8, hierarchy, 0, Point());
+			rectangle(drawing, boundRect[i].tl(), boundRect[i].br(), Scalar(255,0,0), 1, 8, 0);
+
+			refinery_count += 1;
+			boundRect2[refinery_count] = boundRect[i];
+		}
+	}
+
+	boundRect2.resize(refinery_count);
+	imshow("ROI_2", drawing);
+	
 }
 
 
@@ -123,28 +164,25 @@ int initialize() {
 	return 1;
 }
 
-void make_windows(){
-	namedWindow("find_ball", WINDOW_AUTOSIZE );
-	createTrackbar(cannyThresholdTrackbarName, "find_ball", &cannyThreshold,maxCannyThreshold);
-    createTrackbar(accumulatorThresholdTrackbarName, "find_ball", &accumulatorThreshold, maxAccumulatorThreshold);
+void make_windows();
 
-}
- 
+
 int main(int argc, char** argv) {
 	if (initialize() == -1) return -1;
 	load_settings();
 	make_windows();
 
 	// Create a window
-	namedWindow("Edge Map", CV_WINDOW_AUTOSIZE);
-	namedWindow("Output", CV_WINDOW_AUTOSIZE);
 
-	serialPutchar(fd, 62); // init for looking foward
+
+
+	//serialPutchar(fd, 62); // init for looking foward
 
 
 	while (1)
 	{
 		bool bSuccess = cap.read(src);
+		detect_ball_line();
 
 		if (!bSuccess)
 		{
@@ -157,22 +195,22 @@ int main(int argc, char** argv) {
 		src.copyTo(src_ball);
 
 		// Create a matrix of the same type and size as src (for dst)
-		dst.create(src.size(), src.type());
-		src_gray_tmp.create(src_gray.size(), src_gray.type());
-		createTrackbar("Min Threshold:", "Edge Map", &lowThreshold, max_lowThreshold, CannyThreshold);
+		src.copyTo(dst);
+		src_gray.copyTo(src_gray_tmp);
 
 		// Create a Trackbar for user to enter threshold
 		//  createTrackbar( "Max Threshold:", "Edge Map", &lowThreshold, max_lowThreshold, CannyThreshold );
 		// Show the image
 		CannyThreshold(0, 0);
-
-		int cnt[7] = { 0, };
-		for (int i = 0; i<6; i++) {
-			for (int j = 0; j<8; j++) {
+		for (int i = 0; i<3; i++) {
+			for (int j = 0; j<4; j++) {
 				green_cnt[i][j] = 0;
 				red_cnt[i][j] = 0;
 			}
 		}
+/*
+		int cnt[7] = { 0, };
+		
 
 		for (int i = 0; i<7; i++) {
 			for (int j = 200 - 1; j >= 0; j--) {
@@ -196,7 +234,7 @@ int main(int argc, char** argv) {
 		ss_R << edge_R;
 		string str_R = ss_R.str();
 		putText(dst, str_R, Point2f(185, 100), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
-
+*/
 		imshow("Edge Map", dst);
 		imshow("Output", src);
 
@@ -216,7 +254,7 @@ int main(int argc, char** argv) {
 						src.at<Vec3b>(i, j).val[0] = 0;
 						src.at<Vec3b>(i, j).val[1] = 0;
 						src.at<Vec3b>(i, j).val[2] = 255;
-						red_cnt[i / 40][j / 40]++;
+						red_cnt[i / 80][j / 80]++;
 
 						//ball_cnt_x[i]++;
 						//ball_cnt_y[j]++;
@@ -257,23 +295,23 @@ int main(int argc, char** argv) {
 					src.at<Vec3b>(i, j).val[2] = 0;
 				}
 
-				if (src_gray.at<unsigned char>(i, j)<BlackThres) {
-					src_gray.at<unsigned char>(i, j) = 0;
+				if (src_gray_tmp.at<unsigned char>(i, j)<BlackThres) {
+					src_gray_tmp.at<unsigned char>(i, j) = 0;
 				}
-				else if (src_gray.at<unsigned char>(i, j)>WhiteThres) {
-					src_gray.at<unsigned char>(i, j) = 255;
+				else if (src_gray_tmp.at<unsigned char>(i, j)>WhiteThres) {
+					src_gray_tmp.at<unsigned char>(i, j) = 255;
 				}
 				else {
-					src_gray.at<unsigned char>(i, j) = 128;
+					src_gray_tmp.at<unsigned char>(i, j) = 128;
 				}
 			}
 		}
 
-		detect_ball();
+		
 
 		//ROI = fullImage(Rect(G_x_min, G_y_min, G_x_max-G_x_min, G_y_max-G_y_min));
 		if (G_x_max - G_x_min>0 && G_y_max - G_y_min>0) {
-			src_gray(Rect(G_x_min, G_y_min, G_x_max - G_x_min, G_y_max - G_y_min)).copyTo(ROI);
+			dst(Rect(G_x_min, G_y_min, G_x_max - G_x_min, G_y_max - G_y_min)).copyTo(ROI);
 			imshow("ROI", ROI);
 			//cout << "a";
 		}
@@ -371,17 +409,11 @@ int main(int argc, char** argv) {
 		}
 		imshow("Hue", src);
 		
-		createTrackbar("Red Min:", "Hue", &lowRedThres, 255, on_trackbar);
-		createTrackbar("Red Max:", "Hue", &highRedThres, 255, on_trackbar);
-		createTrackbar("Red Diff:", "Hue", &diffRedThres, 255, on_trackbar);
-		createTrackbar("Green Min:", "Hue", &lowGreenThres, 255, on_trackbar);
-		createTrackbar("Green Max:", "Hue", &highGreenThres, 255, on_trackbar);
-		createTrackbar("Green Diff:", "Hue", &diffGreenThres, 255, on_trackbar);
+		
 
 		threshold(src, src, 0, BlackThres, CV_THRESH_BINARY);
-		imshow("Grayscale", src_gray);
-		createTrackbar("Black Threshold:", "Grayscale", &BlackThres, 255, on_trackbar);
-		createTrackbar("White Threshold:", "Grayscale", &WhiteThres, 255, on_trackbar);
+		imshow("Grayscale", src_gray_tmp);
+		
 
 		//serialPutchar (fd, (unsigned char)i);
 
@@ -416,22 +448,9 @@ int main(int argc, char** argv) {
 }
 
 
-void detect_ball(){
-/*	int i_max=0, i_max_i=0, j_max=0, j_max_i=0;
-	for(int j=0;j<WIDTH;j++){
-		if(j_max<=ball_cnt_y[j]){
-				j_max = ball_cnt_y[j];
-				j_max_i = j;		
-		}
-		ball_cnt_y[j] = 0;
-	}
-*/
-
-
-
+void detect_ball_line(){
 	
 	for(int i=0;i<HEIGHT;i++){				
-		//if(ball_cnt_x[i]<j_max+30 && ball_cnt_x[i]>j_max-30){
 			for(int j=0;j<WIDTH;j++){
 				if(!(src_ball.at<Vec3b>(i, j).val[0]==255 && src_ball.at<Vec3b>(i, j).val[1]==255 && src_ball.at<Vec3b>(i, j).val[2]==255)){
 					src_ball.at<Vec3b>(i, j).val[0] = 0;
@@ -439,51 +458,89 @@ void detect_ball(){
 					src_ball.at<Vec3b>(i, j).val[2] = 0;
 				}
 			}
-		//}
-//		ball_cnt_x[i] = 0;
 	}
 //////////////////////////////////////////////////////////////////////////////////////
 		Mat src_line;
 		src_ball.copyTo(src_line);
 
-cv::Mat contours;
- cv::Canny(src_line, contours, 125, 350);
+		cv::Mat contours;
+		cv::Canny(src_line, contours, 125, 350);
 
+		// 선 감지 위한 허프 변환
+		std::vector<cv::Vec2f> lines;
+		cv::HoughLines(contours, lines, 1,PI/180, // 단계별 크기
+					     80);  // 투표(vote) 최대 개수
+		
+		// 선 그리기
+		cv::Mat result(contours.rows, contours.cols, CV_8U, cv::Scalar(255));
+		//std::cout << "Lines detected: " << lines.size() << std::endl;
 
-  // 선 감지 위한 허프 변환
- std::vector<cv::Vec2f> lines;
- cv::HoughLines(contours, lines, 
-     1,PI/180, // 단계별 크기
-     80);  // 투표(vote) 최대 개수
+		// 선 벡터를 반복해 선 그리기
+		std::vector<cv::Vec2f>::const_iterator it= lines.begin();
+		float rho_avg=0, theta_avg=0; 
+		while (it!=lines.end()) {
+			float rho = (*it)[0];   // 첫 번째 요소는 rho 거리
+			float theta = (*it)[1]; // 두 번째 요소는 델타 각도
+			if (theta < PI/4. || theta > 3.*PI/4.) { // 수직 행
+				Point pt1(rho/cos(theta), 0); // 첫 행에서 해당 선의 교차점   
+				Point pt2((rho-result.rows*sin(theta))/cos(theta), result.rows);
+				// 마지막 행에서 해당 선의 교차점
+				line(src_line, pt1, pt2, cv::Scalar(255), 1); // 하얀 선으로 그리기
+			} 
+			else { // 수평 행
+				rho_avg += rho;
+				theta_avg += theta;
+				Point pt1(0,rho/sin(theta)); // 첫 번째 열에서 해당 선의 교차점  
+				Point pt2(result.cols,(rho-result.cols*cos(theta))/sin(theta));
+				// 마지막 열에서 해당 선의 교차점
+				line(src_line, pt1, pt2, cv::Scalar(0,255,255), 1); // 하얀 선으로 그리기
+			}
+			++it;
+		}
 
-  // 선 그리기
- cv::Mat result(contours.rows, contours.cols, CV_8U, cv::Scalar(255));
- std::cout << "Lines detected: " << lines.size() << std::endl;
+		
 
-  // 선 벡터를 반복해 선 그리기
- std::vector<cv::Vec2f>::const_iterator it= lines.begin();
- while (it!=lines.end()) {
-  float rho = (*it)[0];   // 첫 번째 요소는 rho 거리
-  float theta = (*it)[1]; // 두 번째 요소는 델타 각도
-  if (theta < PI/4. || theta > 3.*PI/4.) { // 수직 행
-   cv::Point pt1(rho/cos(theta), 0); // 첫 행에서 해당 선의 교차점   
-   cv::Point pt2((rho-result.rows*sin(theta))/cos(theta), result.rows);
-    // 마지막 행에서 해당 선의 교차점
-   cv::line(src_line, pt1, pt2, cv::Scalar(255), 1); // 하얀 선으로 그리기
+		stringstream ss_Line;
+		ss_Line << "Lines detected: " << lines.size();
+		string str_Line = ss_Line.str();
+		putText(src_line, str_Line, Point2f(180, 220), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
+		
+		if(lines.size()!=0){
+			rho_avg /= lines.size();
+			theta_avg /= lines.size();
+			float pt1_y, pt2_y;
 
-   } else { // 수평 행
-   cv::Point pt1(0,rho/sin(theta)); // 첫 번째 열에서 해당 선의 교차점  
-   cv::Point pt2(result.cols,(rho-result.cols*cos(theta))/sin(theta));
-    // 마지막 열에서 해당 선의 교차점
-   cv::line(src_line, pt1, pt2, cv::Scalar(0,0,255), 1); // 하얀 선으로 그리기
-	std::cout << "line: (" << " " << pt1.x << " " << pt1.y << " " << pt2.x << " " << pt2.y << "," << theta*57.3 << ")\n"; 
-  }
-  //std::cout << "line: (" << pt1.x << "," << theta << ")\n"; 
-  ++it;
- }
+			pt1_y = rho_avg/sin(theta_avg);
+			pt2_y = (rho_avg-result.cols*cos(theta_avg))/sin(theta_avg);
+			Point pt1_avg(0, pt1_y); // 첫 번째 열에서 해당 선의 교차점  
+			Point pt2_avg(result.cols, pt2_y);
 
+			// 마지막 열에서 해당 선의 교차점
+			line(src_line, pt1_avg, pt2_avg, cv::Scalar(0,0,255), 1); // 하얀 선으로 그리기
 
-		imshow("test2", src_line);
+			theta_avg = 90-(theta_avg*57.3);
+			if(-5<theta_avg && theta_avg<5){
+				int pt_mid = (pt1_y+pt2_y)/2;
+				line(src_line, Point(160,319), Point(160,pt_mid), cv::Scalar(128,0,255), 1);
+				stringstream ss_Line_distance;
+				ss_Line_distance << "Distance: " << HEIGHT-pt_mid;	
+				string str_Line_distance = ss_Line_distance.str();
+				putText(src_line, str_Line_distance, Point2f(70, 220), FONT_HERSHEY_PLAIN, 0.7, Scalar(128, 0, 255), 1, 8, false);
+			}
+			stringstream ss_Line_degree;
+			ss_Line_degree << "Degree: " << theta_avg;
+			string str_Line_degree = ss_Line_degree.str();
+			putText(src_line, str_Line_degree, Point2f(180, 235), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
+		}
+		else{
+			theta_avg = 0;
+			putText(src_line, "Not detected", Point2f(180, 235), FONT_HERSHEY_PLAIN, 0.7, Scalar(0, 0, 255), 1, 8, false);
+		}
+
+		
+		
+
+		imshow("Line_find", src_line);
 
 //////////////////////////////////////////////////////////////////////////////////////
 
@@ -502,22 +559,23 @@ cv::Mat contours;
 
 
 void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThreshold, int accumulatorThreshold)
-    {
-        // will hold the results of the detection
+{    
+
+				// will hold the results of the detection
         std::vector<Vec3f> circles;
         // runs the actual detection
         HoughCircles( src_gray, circles, CV_HOUGH_GRADIENT, 1, src_gray.rows/8, cannyThreshold, accumulatorThreshold, 0, 0 );
 
         // clone the colour, input image for displaying purposes
         Mat display = src_display.clone();
-				printf("%d\n", circles.size());
+		printf("%d\n", circles.size());
 
         int max_radius = 0, max_r_i = 0; // added by joon
 
-				for( size_t i = 0; i < circles.size(); i++ )
+		for( size_t i = 0; i < circles.size(); i++ )
         {
-            int radius = cvRound(circles[i][2]);
-        		if(max_radius <= radius){
+          int radius = cvRound(circles[i][2]);
+        if(max_radius <= radius){
 							max_radius = radius;
 							max_r_i = i;		
 						}
@@ -531,10 +589,10 @@ void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThresh
             // circle outline
             circle( display, center, radius, Scalar(0,0,255), 3, 8, 0 );
 			line(display, Point2f(WIDTH/2, HEIGHT-1), center, Scalar(0, 255, 255), 1);
-			if(center.x<WIDTH/2){
-				double ball_degree;
-				ball_degree = atan((HEIGHT-center.y)/(WIDTH/2-center.x))*57.3;
-				cout << "!" << center.y << " " << center.x << endl;
+			double ball_degree;
+			if(center.x<=WIDTH/2){
+				if(center.x == WIDTH/2) ball_degree = 0;
+				else ball_degree = (90-atan(((double)HEIGHT-(double)center.y)/((double)WIDTH/2-(double)center.x))*57.3)*(-1);
 				stringstream ss_ball_degree;
 				ss_ball_degree << setprecision(1) << fixed<< ball_degree;
 				string str_ball_degree = ss_ball_degree.str();
@@ -542,8 +600,13 @@ void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThresh
 
 			}
 			else{
-
+				ball_degree = atan(((double)HEIGHT-(double)center.y)/((double)WIDTH/2-(double)center.x))*57.3+90;
+				stringstream ss_ball_degree;
+				ss_ball_degree << setprecision(1) << fixed<< ball_degree;
+				string str_ball_degree = ss_ball_degree.str();
+				putText(display, str_ball_degree, Point2f(WIDTH/2 + 10, HEIGHT-10), FONT_HERSHEY_PLAIN, 1.5, Scalar(255, 255, 255), 1, 8, false);
 			}
+
 			}
 
         // shows the results
@@ -582,4 +645,27 @@ void save_settings() {
 	fprintf(fp, "%d\n", lowThreshold);
 
 	fclose(fp);
+}
+
+
+void make_windows(){
+	namedWindow("find_ball", WINDOW_AUTOSIZE );
+	namedWindow("Hue", WINDOW_AUTOSIZE );
+	namedWindow("Edge Map", CV_WINDOW_AUTOSIZE);
+	namedWindow("Output", CV_WINDOW_AUTOSIZE);
+	namedWindow("Grayscale", CV_WINDOW_AUTOSIZE);
+
+	createTrackbar(cannyThresholdTrackbarName, "find_ball", &cannyThreshold,maxCannyThreshold);
+    createTrackbar(accumulatorThresholdTrackbarName, "find_ball", &accumulatorThreshold, maxAccumulatorThreshold);
+
+	createTrackbar("Min Threshold:", "Edge Map", &lowThreshold, max_lowThreshold, on_trackbar);
+	createTrackbar("Red Min:", "Hue", &lowRedThres, 255, on_trackbar);
+	createTrackbar("Red Max:", "Hue", &highRedThres, 255, on_trackbar);
+	createTrackbar("Red Diff:", "Hue", &diffRedThres, 255, on_trackbar);
+	createTrackbar("Green Min:", "Hue", &lowGreenThres, 255, on_trackbar);
+	createTrackbar("Green Max:", "Hue", &highGreenThres, 255, on_trackbar);
+	createTrackbar("Green Diff:", "Hue", &diffGreenThres, 255, on_trackbar);	
+
+	createTrackbar("Black Threshold:", "Grayscale", &BlackThres, 255, on_trackbar);
+	createTrackbar("White Threshold:", "Grayscale", &WhiteThres, 255, on_trackbar);
 }
