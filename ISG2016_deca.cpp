@@ -21,6 +21,7 @@ using namespace std;
 ////// Global variables start //////
 
 int fd;
+int milk_x_max=0, milk_y_max=0;
 VideoCapture cap(0);
 
 Mat src, src_gray, src_HSV, src_ROI;
@@ -39,6 +40,8 @@ int exit_status=0,input_status=0;
 char window_Edge[15] = "Edge Map";
 char window_HSV[15] = "Hue based";
 char window_ROI[15] = "ROI";
+int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
+int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12}, {7,8,8,9}, {4,5,5,6}, {1,2,2,3}};
 
 FILE *fp;
 
@@ -140,21 +143,44 @@ int main( int argc, char** argv )
 	
 		cvtColor(src_ROI, src_gray, CV_BGR2GRAY);
 		CannyThreshold(0, 0);
-		for(int i=0;i<HEIGHT;i+=80){
-			for(int j=0;j<WIDTH;j++){
-				src_ROI.at<Vec3b>(i, j).val[0] = 0;
-				src_ROI.at<Vec3b>(i, j).val[1] = 255;
-				src_ROI.at<Vec3b>(i, j).val[2] = 255;
+		if(look_down==0){
+			for(int i=0;i<HEIGHT;i+=80){
+				for(int j=0;j<WIDTH;j++){
+					src_ROI.at<Vec3b>(i, j).val[0] = 0;
+					src_ROI.at<Vec3b>(i, j).val[1] = 255;
+					src_ROI.at<Vec3b>(i, j).val[2] = 255;
+				}
 			}
-		}
 
-		for(int i=0;i<HEIGHT;i++){
-			for(int j=0;j<WIDTH;j+=80){
-				src_ROI.at<Vec3b>(i, j).val[0] = 0;
-				src_ROI.at<Vec3b>(i, j).val[1] = 255;
-				src_ROI.at<Vec3b>(i, j).val[2] = 255;
+			for(int i=0;i<HEIGHT;i++){
+				for(int j=0;j<WIDTH;j+=80){
+					src_ROI.at<Vec3b>(i, j).val[0] = 0;
+					src_ROI.at<Vec3b>(i, j).val[1] = 255;
+					src_ROI.at<Vec3b>(i, j).val[2] = 255;
+				}
 			}
 		}
+		else{
+			for(int i=0;i<HEIGHT;i+=40){
+				for(int j=0;j<WIDTH;j++){
+					src_ROI.at<Vec3b>(i, j).val[0] = 0;
+					src_ROI.at<Vec3b>(i, j).val[1] = 0;
+					src_ROI.at<Vec3b>(i, j).val[2] = 255;
+				}
+			}
+
+			for(int i=0;i<HEIGHT;i++){
+				src_ROI.at<Vec3b>(i, 80).val[0] = 0;
+				src_ROI.at<Vec3b>(i, 80).val[1] = 0;
+				src_ROI.at<Vec3b>(i, 80).val[2] = 255;
+
+				src_ROI.at<Vec3b>(i, WIDTH-80).val[0] = 0;
+				src_ROI.at<Vec3b>(i, WIDTH-80).val[1] = 0;
+				src_ROI.at<Vec3b>(i, WIDTH-80).val[2] = 255;
+			}
+		}
+		
+		//cout << milk_x_max/80 << " " << milk_y_max/80 << endl;
 		imshow(window_ROI, src_ROI);
 		
 		imshow(window_Edge, src_edge);
@@ -176,9 +202,35 @@ int main( int argc, char** argv )
 		}
 		while (serialDataAvail(fd))
 		{
-				printf(" -> %3d\n", serialGetchar(fd));
-				if(fd==31) look_down = 1;
-				else if(fd==
+				int tmp;
+				printf(" -> %3d\n", tmp=serialGetchar(fd));
+				switch(tmp){
+					case 29: look_down = 0; break;
+					case 31: look_down = 1; break;
+					case 96: printf("Where is milk?\n"); 
+						if(milk_y_max>0 && milk_x_max>0) {int milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+						serialPutchar (fd, (unsigned char)milk_finded); 
+						printf(" -> %3d\n", milk_finded);
+						}
+						else{
+							printf("Not founded\n");
+							serialPutchar (fd, (unsigned char)38); 
+						}
+						//printf("a");
+						break;
+					case 97: printf("Look down\n"); 
+						look_down = 1;
+						if(milk_y_max>0 && milk_x_max>0) {int milk_finded=milk_map_front[milk_y_max/40][milk_x_max/80];
+						serialPutchar (fd, (unsigned char)milk_finded); 
+						printf(" -> %3d\n", milk_finded);
+						}
+						else{
+							printf("Not founded\n");
+							serialPutchar (fd, (unsigned char)38); 
+						}
+						//printf("a");
+						break;
+				}
 				fflush (stdout) ;
 		}
 
@@ -264,6 +316,7 @@ void CannyThreshold(int, void*)
 	vector<Rect> boundRect(contours.size());
 	vector<Rect> boundRect2(contours.size());
 
+	milk_x_max=0, milk_y_max=0;
 	for(int i = 0; i<contours.size(); i++){
 		approxPolyDP(Mat(contours[i]), contours_poly[i], 1, true);
 		boundRect[i] = boundingRect(Mat(contours_poly[i]));
@@ -277,6 +330,10 @@ void CannyThreshold(int, void*)
 				}
 			}
 			if(milk_G_cnt>20){
+				if(milk_y_max<boundRect[i].br().y){
+					milk_y_max = boundRect[i].br().y;
+					milk_x_max = (boundRect[i].tl().x+boundRect[i].br().x)/2;
+				}
 				rectangle(src_ROI, boundRect[i].tl(), boundRect[i].br(), Scalar(128,0,128), 1, 8, 0);
 				stringstream ss_milk;
 				ss_milk << milk_G_cnt;	
