@@ -24,7 +24,7 @@ int fd;
 int milk_x_max=0, milk_y_max=0;
 VideoCapture cap(0);
 
-Mat src, src_gray, src_HSV, src_ROI;
+Mat src, src_gray, src_HSV, src_ROI, src_line;;
 Mat src_edge, detected_edges;
 
 // for canny detect
@@ -41,7 +41,7 @@ char window_Edge[15] = "Edge Map";
 char window_HSV[15] = "Hue based";
 char window_ROI[15] = "ROI";
 int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
-int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12}, {7,8,8,9}, {4,5,5,6}, {1,2,2,3}};
+int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
 
 FILE *fp;
 
@@ -77,11 +77,13 @@ int main( int argc, char** argv )
 		}
 		if(first_frame==1){
 			src_edge.create( src.size(), src.type() );
+			src_line.create( src.size(), src.type() );
 			src_ROI.create( src.size(), src.type() );
 			first_frame = 0;
 		}
 		// Hue based start
 		cvtColor(src, src_HSV, COLOR_BGR2HSV);
+
 		for (int i = 0; i<HEIGHT; i++) {
 			for (int j = 0; j<WIDTH; j++) {
 				if (src_HSV.at<Vec3b>(i, j).val[0]<lowRedThres || src_HSV.at<Vec3b>(i, j).val[0]>highRedThres) {
@@ -92,12 +94,19 @@ int main( int argc, char** argv )
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
 						src_HSV.at<Vec3b>(i, j).val[1] = 0;
 						src_HSV.at<Vec3b>(i, j).val[2] = 255;
-
+						
+						src_line.at<Vec3b>(i, j).val[0] = 0;
+						src_line.at<Vec3b>(i, j).val[1] = 0;
+						src_line.at<Vec3b>(i, j).val[2] = 255;
 					}
 					else {
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
 						src_HSV.at<Vec3b>(i, j).val[1] = 0;
 						src_HSV.at<Vec3b>(i, j).val[2] = 0;
+
+						src_line.at<Vec3b>(i, j).val[0] = 0;
+						src_line.at<Vec3b>(i, j).val[1] = 0;
+						src_line.at<Vec3b>(i, j).val[2] = 0;
 					}
 				}
 				else if (lowGreenThres < src_HSV.at<Vec3b>(i, j).val[0] && src_HSV.at<Vec3b>(i, j).val[0]<highGreenThres) {
@@ -113,6 +122,10 @@ int main( int argc, char** argv )
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
 						src_HSV.at<Vec3b>(i, j).val[1] = 0;
 						src_HSV.at<Vec3b>(i, j).val[2] = 0;
+
+						src_line.at<Vec3b>(i, j).val[0] = 0;
+						src_line.at<Vec3b>(i, j).val[1] = 0;
+						src_line.at<Vec3b>(i, j).val[2] = 0;
 					}
 
 				}
@@ -120,10 +133,15 @@ int main( int argc, char** argv )
 					src_HSV.at<Vec3b>(i, j).val[0] = 0;
 					src_HSV.at<Vec3b>(i, j).val[1] = 0;
 					src_HSV.at<Vec3b>(i, j).val[2] = 0;
+
+					src_line.at<Vec3b>(i, j).val[0] = 0;
+					src_line.at<Vec3b>(i, j).val[1] = 0;
+					src_line.at<Vec3b>(i, j).val[2] = 0;
 				}
 			}
 		}
 		imshow(window_HSV, src_HSV);
+		
 		
 		if(detect_ball_line() == 1){ // line detected
 			for(int j=0;j<WIDTH;j++){
@@ -152,8 +170,15 @@ int main( int argc, char** argv )
 				}
 			}
 
-			for(int i=0;i<HEIGHT;i++){
+			for(int i=80;i<HEIGHT;i++){
 				for(int j=0;j<WIDTH;j+=80){
+					src_ROI.at<Vec3b>(i, j).val[0] = 0;
+					src_ROI.at<Vec3b>(i, j).val[1] = 255;
+					src_ROI.at<Vec3b>(i, j).val[2] = 255;
+				}
+			}
+			for(int i=0;i<80;i++){
+				for(int j=0;j<WIDTH;j+=107){
 					src_ROI.at<Vec3b>(i, j).val[0] = 0;
 					src_ROI.at<Vec3b>(i, j).val[1] = 255;
 					src_ROI.at<Vec3b>(i, j).val[2] = 255;
@@ -203,26 +228,33 @@ int main( int argc, char** argv )
 		while (serialDataAvail(fd))
 		{
 				int tmp;
-				printf(" -> %3d\n", tmp=serialGetchar(fd));
+				printf(" robot: %3d\n", tmp=serialGetchar(fd));
 				switch(tmp){
 					case 29: look_down = 0; break;
 					case 31: look_down = 1; break;
-					case 96: printf("Where is milk?\n"); 
-						if(milk_y_max>0 && milk_x_max>0) {int milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
-						serialPutchar (fd, (unsigned char)milk_finded); 
-						printf(" -> %3d\n", milk_finded);
+					case 96: printf("Where is milk? "); 
+						if(milk_y_max>0 && milk_x_max>0) {
+							if(look_down == 0){
+								int milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+								serialPutchar (fd, (unsigned char)milk_finded); 
+								printf(" -> %3d\n", milk_finded);
+							}
+							else if(look_down == 1){
+
+							}
 						}
 						else{
 							printf("Not founded\n");
-							serialPutchar (fd, (unsigned char)38); 
+							serialPutchar (fd, (unsigned char)0); 
 						}
 						//printf("a");
 						break;
 					case 97: printf("Look down\n"); 
 						look_down = 1;
-						if(milk_y_max>0 && milk_x_max>0) {int milk_finded=milk_map_front[milk_y_max/40][milk_x_max/80];
-						serialPutchar (fd, (unsigned char)milk_finded); 
-						printf(" -> %3d\n", milk_finded);
+						if(milk_y_max>0 && milk_x_max>0) {
+							int milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+							serialPutchar (fd, (unsigned char)milk_finded); 
+							printf(" -> %3d\n", milk_finded);
 						}
 						else{
 							printf("Not founded\n");
@@ -230,6 +262,37 @@ int main( int argc, char** argv )
 						}
 						//printf("a");
 						break;
+
+					case 105: printf("ISG19 milk_horizon(2,5)");
+						if(milk_y_max>0 && milk_x_max>0) {
+							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
+							if(milk_finded==2 || milk_finded==5){
+								printf(" -> %3d\n", milk_finded);
+								serialPutchar (fd, (unsigned char)1); 	
+							}
+							else{
+								printf(" -> Not founded\n");
+								serialPutchar (fd, (unsigned char)0);
+							}
+						}
+						else{
+								printf(" -> Not founded\n");
+								serialPutchar (fd, (unsigned char)0);
+						}
+						look_down = 1;
+						break; 
+
+					case 106: printf("ISG19 milk_horizon(1~6)");
+						if(milk_y_max>0 && milk_x_max>0) {
+							printf(" -> %3d\n", 6-(milk_y_max/40));
+							serialPutchar (fd, (unsigned char)6-(milk_y_max/40));
+						}
+						else{
+							printf(" -> Not founded\n");
+							serialPutchar (fd, (unsigned char)0); 
+						}
+						look_down = 1;
+						break; 
 				}
 				fflush (stdout) ;
 		}
@@ -368,8 +431,7 @@ int detect_ball_line(){
 
 //////////////////////////////////////////////////////////////////////////////////////
 		int detect_line = 0;
-		Mat src_line;
-		src_HSV.copyTo(src_line);
+		
 
 		cv::Mat contours;
 		cv::Canny(src_line, contours, 125, 350);
