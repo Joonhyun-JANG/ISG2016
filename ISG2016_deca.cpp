@@ -35,13 +35,19 @@ int const max_lowThreshold = 300;
 int lowRedThres = 0, highRedThres = 0, lowGreenThres = 0, highGreenThres = 0;
 int diffRedThres = 0, diffGreenThres = 0;
 
+// for line detecting
+int lineThreshold=0, voteThreshold=80;
+
 int milk_width_min=0, milk_width_max=0, milk_height_min=0, milk_height_max=0;
 int exit_status=0,input_status=0;
 char window_Edge[15] = "Edge Map";
 char window_HSV[15] = "Hue based";
 char window_ROI[15] = "ROI";
+char window_Line[15] = "line find";
 int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
 int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
+
+float theta_avg=0;
 
 FILE *fp;
 
@@ -144,18 +150,71 @@ int main( int argc, char** argv )
 		
 		
 		if(detect_ball_line() == 1){ // line detected
+			int line_start=0;
+			
 			for(int j=0;j<WIDTH;j++){
-				for(int i=0;i<HEIGHT;i++){
+				int i_tmp=0;
+				for(int i=0;i<HEIGHT;i++){	
 					if(src_ROI.at<Vec3b>(i, j).val[0] == 255){
+						i_tmp = i;
+						if(line_start==0) line_start=1;
 						break;
+					}		
+				}
+				if(i_tmp==0 && line_start==1) line_start=2;
+				if(i_tmp==0 && line_start==0){ // before
+					if(theta_avg>0){
+						for(int i=0;i<HEIGHT;i++){
+							src_ROI.at<Vec3b>(i, j).val[0] = 0;
+							src_ROI.at<Vec3b>(i, j).val[1] = 0;
+							src_ROI.at<Vec3b>(i, j).val[2] = 0;
+						}
 					}
-					else{
+
+				}
+				if(i_tmp==0 && line_start==2){ // end
+					if(theta_avg<0){
+						for(int i=0;i<HEIGHT;i++){
+							src_ROI.at<Vec3b>(i, j).val[0] = 0;
+							src_ROI.at<Vec3b>(i, j).val[1] = 0;
+							src_ROI.at<Vec3b>(i, j).val[2] = 0;
+						}
+					}
+				}
+				if(i_tmp!=0){ // line inside 
+					for(int i=0;i<i_tmp;i++){
 						src_ROI.at<Vec3b>(i, j).val[0] = 0;
 						src_ROI.at<Vec3b>(i, j).val[1] = 0;
 						src_ROI.at<Vec3b>(i, j).val[2] = 0;
 					}
 				}
 			}
+				/*int i=0;
+				for(i=0;i<HEIGHT;i++){
+					if(src_ROI.at<Vec3b>(i, j).val[0] == 255){
+						if(line_start==0){
+							line_start==1;
+						}
+						break;
+					}
+				}
+				//if(line_start==1 && i==HEIGHT) line_start=2; // line end 
+				if(line_start==1){
+					for(int i_tmp=0;i_tmp<i;i_tmp++){
+						src_ROI.at<Vec3b>(i_tmp, j).val[0] = 0;
+						src_ROI.at<Vec3b>(i_tmp, j).val[1] = 0;
+						src_ROI.at<Vec3b>(i_tmp, j).val[2] = 0;
+					}
+				}
+				else if(i==HEIGHT && line_start==2){
+					for(int i_tmp=0;i_tmp<HEIGHT;i_tmp++){
+						src_ROI.at<Vec3b>(i_tmp, j).val[0] = 0;
+						src_ROI.at<Vec3b>(i_tmp, j).val[1] = 0;
+						src_ROI.at<Vec3b>(i_tmp, j).val[2] = 0;
+					}
+				}	
+			}
+		*/
 		}
 
 	
@@ -177,10 +236,10 @@ int main( int argc, char** argv )
 					src_ROI.at<Vec3b>(i, j).val[2] = 255;
 				}
 			}
-			for(int i=0;i<80;i++){
-				for(int j=0;j<WIDTH;j+=107){
+			for(int i=0;i<HEIGHT;i++){
+				for(int j=107;j<WIDTH;j+=107){
 					src_ROI.at<Vec3b>(i, j).val[0] = 0;
-					src_ROI.at<Vec3b>(i, j).val[1] = 255;
+					src_ROI.at<Vec3b>(i, j).val[1] = 0;
 					src_ROI.at<Vec3b>(i, j).val[2] = 255;
 				}
 			}
@@ -232,15 +291,33 @@ int main( int argc, char** argv )
 				switch(tmp){
 					case 29: look_down = 0; break;
 					case 31: look_down = 1; break;
+					case 95: printf("find milk(30~150) "); 
+						if(milk_x_max>107 && milk_x_max<214){
+							serialPutchar (fd, (unsigned char)1); 
+							printf(" -> yes\n");
+						}
+						else{
+							serialPutchar (fd, (unsigned char)0); 
+							printf(" -> no\n");
+						}	
+						break;
 					case 96: printf("Where is milk? "); 
 						if(milk_y_max>0 && milk_x_max>0) {
 							if(look_down == 0){
-								int milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+								int milk_finded;
+								if(milk_y_max>80){
+									milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+								}
+								else{
+									milk_finded=9+(milk_x_max/107);
+								}
 								serialPutchar (fd, (unsigned char)milk_finded); 
-								printf(" -> %3d\n", milk_finded);
+								printf(" -> %3d(front)\n", milk_finded);
 							}
 							else if(look_down == 1){
-
+								int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
+								serialPutchar (fd, (unsigned char)milk_finded); 
+								printf(" -> %3d(down)\n", milk_finded);
 							}
 						}
 						else{
@@ -251,7 +328,7 @@ int main( int argc, char** argv )
 						break;
 					case 97: printf("Look down\n"); 
 						look_down = 1;
-						if(milk_y_max>0 && milk_x_max>0) {
+						/*if(milk_y_max>0 && milk_x_max>0) {
 							int milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
 							serialPutchar (fd, (unsigned char)milk_finded); 
 							printf(" -> %3d\n", milk_finded);
@@ -259,10 +336,12 @@ int main( int argc, char** argv )
 						else{
 							printf("Not founded\n");
 							serialPutchar (fd, (unsigned char)38); 
-						}
+						}*/
 						//printf("a");
 						break;
-
+					case 99: printf("Look front\n"); 
+						look_down = 0;
+						break;
 					case 105: printf("ISG19 milk_horizon(2,5)");
 						if(milk_y_max>0 && milk_x_max>0) {
 							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
@@ -284,8 +363,8 @@ int main( int argc, char** argv )
 
 					case 106: printf("ISG19 milk_horizon(1~6)");
 						if(milk_y_max>0 && milk_x_max>0) {
-							printf(" -> %3d\n", 6-(milk_y_max/40));
-							serialPutchar (fd, (unsigned char)6-(milk_y_max/40));
+							printf(" -> %3d\n", 6-(int)(milk_y_max/40));
+							serialPutchar (fd, (unsigned char)6-(int)(milk_y_max/40));
 						}
 						else{
 							printf(" -> Not founded\n");
@@ -296,9 +375,11 @@ int main( int argc, char** argv )
 				}
 				fflush (stdout) ;
 		}
-
+		//current time-pre time;
+		
 		// Wait until user exit program by pressing a key
-		waitKey(30);
+		waitKey(10);
+		//previous time = present time save
 
 		}
 	save_settings();
@@ -345,12 +426,16 @@ void make_windows(){
 	createTrackbar("Green Max:", window_HSV, &highGreenThres, 255, ThresRefresh);
 	createTrackbar("Green Diff:", window_HSV, &diffGreenThres, 255, ThresRefresh);	
 
+	// Create a "ROI window"
 	namedWindow(window_ROI, CV_WINDOW_AUTOSIZE);
 	createTrackbar("width_min:", window_ROI, &milk_width_min, 320, ThresRefresh);
 	createTrackbar("width_max:", window_ROI, &milk_width_max, 320, ThresRefresh);
 	createTrackbar("height_min:", window_ROI, &milk_height_min, 240, ThresRefresh);
 	createTrackbar("height_max:", window_ROI, &milk_height_max, 240, ThresRefresh);
 
+	namedWindow(window_Line, CV_WINDOW_AUTOSIZE);
+	createTrackbar("line_thres:", window_Line, &lineThreshold, 320, ThresRefresh);
+	createTrackbar("vote_thres:", window_Line, &voteThreshold, 320, ThresRefresh);
 }
 
 void ThresRefresh(int, void*){
@@ -399,7 +484,7 @@ void CannyThreshold(int, void*)
 				}
 				rectangle(src_ROI, boundRect[i].tl(), boundRect[i].br(), Scalar(128,0,128), 1, 8, 0);
 				stringstream ss_milk;
-				ss_milk << milk_G_cnt;	
+				ss_milk << (boundRect[i].tl().x+boundRect[i].br().x)/2 << " " << boundRect[i].br().y;	
 				string str_milk = ss_milk.str();
 				putText(src_ROI, str_milk, boundRect[i].tl(), FONT_HERSHEY_PLAIN, 0.7, Scalar(128, 0, 255), 1, 8, false);
 			}
@@ -431,15 +516,15 @@ int detect_ball_line(){
 
 //////////////////////////////////////////////////////////////////////////////////////
 		int detect_line = 0;
-		
+		theta_avg = 0;
 
 		cv::Mat contours;
-		cv::Canny(src_line, contours, 125, 350);
+		cv::Canny(src_line, contours, lineThreshold, lineThreshold*ratio);
 
 		// 선 감지 위한 허프 변환
 		std::vector<cv::Vec2f> lines;
 		cv::HoughLines(contours, lines, 1,PI/180, // 단계별 크기
-					     80);  // 투표(vote) 최대 개수
+					    voteThreshold);  // 투표(vote) 최대 개수
 		
 		// 선 그리기
 		cv::Mat result(contours.rows, contours.cols, CV_8U, cv::Scalar(255));
@@ -447,11 +532,13 @@ int detect_ball_line(){
 
 		// 선 벡터를 반복해 선 그리기
 		std::vector<cv::Vec2f>::const_iterator it= lines.begin();
-		float rho_avg=0, theta_avg=0; 
+		float rho_avg=0; 
 		while (it!=lines.end()) {
 			float rho = (*it)[0];   // 첫 번째 요소는 rho 거리
 			float theta = (*it)[1]; // 두 번째 요소는 델타 각도
 			if (theta < PI/4. || theta > 3.*PI/4.) { // 수직 행
+				rho_avg += rho;
+				theta_avg += theta;
 				Point pt1(rho/cos(theta), 0); // 첫 행에서 해당 선의 교차점   
 				Point pt2((rho-result.rows*sin(theta))/cos(theta), result.rows);
 				// 마지막 행에서 해당 선의 교차점
@@ -463,7 +550,8 @@ int detect_ball_line(){
 				Point pt1(0,rho/sin(theta)); // 첫 번째 열에서 해당 선의 교차점  
 				Point pt2(result.cols,(rho-result.cols*cos(theta))/sin(theta));
 				// 마지막 열에서 해당 선의 교차점
-				line(src_line, pt1, pt2, cv::Scalar(0,255,255), 1); // 하얀 선으로 그리기
+				line(src_line, pt1, pt2, cv::Scalar(0,255,255), 1); // yellow line
+				
 			}
 			++it;
 		}
@@ -510,7 +598,7 @@ int detect_ball_line(){
 		
 		
 
-		imshow("Line_find", src_line);
+		imshow(window_Line, src_line);
 
 //////////////////////////////////////////////////////////////////////////////////////
 
