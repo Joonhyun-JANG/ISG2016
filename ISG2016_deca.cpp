@@ -15,6 +15,9 @@
 #include <string.h>
 #include <math.h>
 
+#include <omp.h>
+
+
 using namespace cv;
 using namespace std;
 
@@ -47,7 +50,7 @@ char window_Line[15] = "line find";
 int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
 int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
 
-float theta_avg=0;
+float theta_avg=0, theta_avg2=0;
 
 FILE *fp;
 
@@ -56,6 +59,46 @@ FILE *fp;
 #define WIDTH 320
 #define HEIGHT 240
 #define PI 3.1415926
+
+typedef unsigned long DWORD;
+typedef unsigned long int tick32_t;
+
+static DWORD lastTime = 0;
+tick32_t get_tick_count(){\
+	tick32_t tick=0ul;
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	tick = (tp.tv_sec*1000ul) + (tp.tv_nsec/1000ul/1000ul);
+	return tick;
+}
+
+
+void UpdateFPS(){
+
+	static DWORD frameCount = 0;
+	static float timeElapsed = 0.0f;
+
+	DWORD curTime = get_tick_count();
+	float timeDelta = (curTime - lastTime)*0.001f;
+
+	timeElapsed += timeDelta;
+
+	frameCount++;
+	//timeDelta is SPF (sec per frame)
+	printf("timeDelta : %f\n", timeDelta);
+	//printf("cur : %d, last : %d\n", curTime, lastTime);
+	if(timeElapsed >= 1.0f){
+		float fps = (float)frameCount/timeElapsed;
+		printf("frameCount : %d, timeElapsed : %f, fps : %f\n", frameCount, timeElapsed, fps);
+		frameCount = 0;
+		timeElapsed = 0.0f;
+		//lastTime = curTime;
+	}else{
+	}
+	lastTime = curTime;
+}
+
+
 
 int initialize();
 void make_windows();
@@ -74,6 +117,8 @@ int main( int argc, char** argv )
 	load_settings();
 	make_windows();
 
+	lastTime = get_tick_count();
+
 	while(1){
 		bool bSuccess = cap.read(src);
 		if (!bSuccess)
@@ -89,6 +134,9 @@ int main( int argc, char** argv )
 		}
 		// Hue based start
 		cvtColor(src, src_HSV, COLOR_BGR2HSV);
+		src.copyTo(src_ROI);
+
+
 
 		for (int i = 0; i<HEIGHT; i++) {
 			for (int j = 0; j<WIDTH; j++) {
@@ -146,15 +194,15 @@ int main( int argc, char** argv )
 				}
 			}
 		}
+
 		imshow(window_HSV, src_HSV);
-		
-		
+
 		if(detect_ball_line() == 1){ // line detected
 			int line_start=0;
 			
 			for(int j=0;j<WIDTH;j++){
 				int i_tmp=0;
-				for(int i=0;i<HEIGHT;i++){	
+				for(int i=0;i<HEIGHT;i++){	// delete out of line
 					if(src_ROI.at<Vec3b>(i, j).val[0] == 255){
 						i_tmp = i;
 						if(line_start==0) line_start=1;
@@ -189,32 +237,7 @@ int main( int argc, char** argv )
 					}
 				}
 			}
-				/*int i=0;
-				for(i=0;i<HEIGHT;i++){
-					if(src_ROI.at<Vec3b>(i, j).val[0] == 255){
-						if(line_start==0){
-							line_start==1;
-						}
-						break;
-					}
-				}
-				//if(line_start==1 && i==HEIGHT) line_start=2; // line end 
-				if(line_start==1){
-					for(int i_tmp=0;i_tmp<i;i_tmp++){
-						src_ROI.at<Vec3b>(i_tmp, j).val[0] = 0;
-						src_ROI.at<Vec3b>(i_tmp, j).val[1] = 0;
-						src_ROI.at<Vec3b>(i_tmp, j).val[2] = 0;
-					}
-				}
-				else if(i==HEIGHT && line_start==2){
-					for(int i_tmp=0;i_tmp<HEIGHT;i_tmp++){
-						src_ROI.at<Vec3b>(i_tmp, j).val[0] = 0;
-						src_ROI.at<Vec3b>(i_tmp, j).val[1] = 0;
-						src_ROI.at<Vec3b>(i_tmp, j).val[2] = 0;
-					}
-				}	
-			}
-		*/
+				
 		}
 
 	
@@ -284,6 +307,7 @@ int main( int argc, char** argv )
 			}
 			make_windows();
 		}
+		
 		while (serialDataAvail(fd))
 		{
 				int tmp;
@@ -376,9 +400,9 @@ int main( int argc, char** argv )
 				fflush (stdout) ;
 		}
 		//current time-pre time;
-		
+		UpdateFPS();
 		// Wait until user exit program by pressing a key
-		waitKey(10);
+		waitKey(5);
 		//previous time = present time save
 
 		}
@@ -516,7 +540,9 @@ int detect_ball_line(){
 
 //////////////////////////////////////////////////////////////////////////////////////
 		int detect_line = 0;
-		theta_avg = 0;
+		int group1_cnt=0, group2_cnt=0;
+		float group1_theta[3]={999,999,999}, group2_theta[3]={999,999,999};
+		theta_avg = 0, theta_avg2 = 0;
 
 		cv::Mat contours;
 		cv::Canny(src_line, contours, lineThreshold, lineThreshold*ratio);
@@ -532,47 +558,172 @@ int detect_ball_line(){
 
 		// 선 벡터를 반복해 선 그리기
 		std::vector<cv::Vec2f>::const_iterator it= lines.begin();
-		float rho_avg=0; 
+		float rho_avg=0, rho_avg2=0; 
+		int tmp_line=80;
 		while (it!=lines.end()) {
 			float rho = (*it)[0];   // 첫 번째 요소는 rho 거리
 			float theta = (*it)[1]; // 두 번째 요소는 델타 각도
+			float theta_tmp = theta*57.3;
+			int group = 0;
+
+			if(group==0 && group1_theta[0]==999){
+					group1_theta[0] = theta*57.3;
+					group1_theta[1] = group1_theta[0]-15;
+					group1_theta[2] = group1_theta[0]+15;
+			}
+			if(group1_theta[1]<0){
+				if((theta_tmp>group1_theta[1]+180) || (group1_theta[2]>theta_tmp)){
+					group = 1;
+				}
+			}
+			else if(group1_theta[2]>180){
+				if((group1_theta[1]<theta_tmp) || (group1_theta[2]-180)>theta_tmp){
+					group = 1;
+				}
+			}
+			else{
+				if(group1_theta[1]<theta_tmp && theta_tmp<group1_theta[2]){
+					group = 1;
+				}
+			}
+
+			if(group==0){
+					if(group2_theta[0]==999){
+						group2_theta[0] = theta*57.3;
+						group2_theta[1] = group2_theta[0]-15;
+						group2_theta[2] = group2_theta[0]+15;
+					}
+					if(group2_theta[1]<0){
+						if((theta_tmp>group2_theta[1]+180) || (group2_theta[2]>theta_tmp)){
+							group = 2;
+						}
+					}
+					else if(group2_theta[2]>180){
+						if((group2_theta[1]<theta_tmp) || (group2_theta[2]-180)>theta_tmp){
+							group = 2;
+						}
+					}		
+					else{
+						if(group2_theta[1]<theta_tmp && theta_tmp<group2_theta[2]){
+							group = 2;
+						}
+					}
+			}
+
+			
+
+			
+
+
 			if (theta < PI/4. || theta > 3.*PI/4.) { // 수직 행
-				rho_avg += rho;
-				theta_avg += theta;
-				Point pt1(rho/cos(theta), 0); // 첫 행에서 해당 선의 교차점   
-				Point pt2((rho-result.rows*sin(theta))/cos(theta), result.rows);
-				// 마지막 행에서 해당 선의 교차점
-				line(src_line, pt1, pt2, cv::Scalar(0,255,255), 1); // 하얀 선으로 그리기
+					Point pt1(rho/cos(theta), 0); // 첫 행에서 해당 선의 교차점   
+					Point pt2((rho-result.rows*sin(theta))/cos(theta), result.rows);
+					// 마지막 행에서 해당 선의 교차점
+					if(group==1){
+						line(src_line, pt1, pt2, cv::Scalar(0,255,0), 1); // green line
+						rho_avg += rho;
+						theta_avg += theta;
+						group1_cnt++;
+					}
+					else if(group==2){
+						line(src_line, pt1, pt2, cv::Scalar(0,255, 255), 1); // yellow line
+						rho_avg2 += rho;
+						theta_avg2 += theta;
+						group2_cnt++;
+					}
 			} 
 			else { // 수평 행
-				rho_avg += rho;
-				theta_avg += theta;
 				Point pt1(0,rho/sin(theta)); // 첫 번째 열에서 해당 선의 교차점  
 				Point pt2(result.cols,(rho-result.cols*cos(theta))/sin(theta));
 				// 마지막 열에서 해당 선의 교차점
-				line(src_line, pt1, pt2, cv::Scalar(0,255,255), 1); // yellow line
+
+				if(group==1){
+						line(src_line, pt1, pt2, cv::Scalar(0,255,0), 1); // green line
+						rho_avg += rho;
+						theta_avg += theta;
+						group1_cnt++;
+				}
+				else if(group==2){
+						line(src_line, pt1, pt2, cv::Scalar(0,255, 255), 1); // yellow line
+						rho_avg2 += rho;
+						theta_avg2 += theta;
+						group2_cnt++;
+				}
 				
 			}
 			++it;
+
+			stringstream ss_Line_degree;
+			ss_Line_degree << "Degree: " << 90-(theta*57.3);
+			string str_Line_degree = ss_Line_degree.str();
+			putText(src_line, str_Line_degree, Point2f(10, tmp_line), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
+			
+			tmp_line += 15;
 		}
 		
-		if(lines.size()!=0){
-			rho_avg /= lines.size();
-			theta_avg /= lines.size();
-			float pt1_y, pt2_y;
+		if(lines.size()!=0){ // draw median line
+			int mid_group = 1;
+			/*if(group2_cnt>0){
+				float group1_degree=0, group2_degree=0;
+				group1_degree = 90-(theta_avg/group1_cnt)*57.3;
+				if(group1_degree<0) group1_degree = group1_degree*(-1);
+				group2_degree = 90-(theta_avg/group1_cnt)*57.3;
+				if(group2_degree<0) group2_degree = group2_degree*(-1);
 
-			pt1_y = rho_avg/sin(theta_avg);
-			pt2_y = (rho_avg-result.cols*cos(theta_avg))/sin(theta_avg);
-			Point pt1_avg(0, pt1_y); // 첫 번째 열에서 해당 선의 교차점  
-			Point pt2_avg(result.cols, pt2_y);
+				if(group2_degree<group1_degree) mid_group=2;
+			}*/
+	
+			float pt1_xy, pt2_xy; // group 1
+			float pt3_xy, pt4_xy; // group 2
 
-			// 마지막 열에서 해당 선의 교차점
-			line(src_line, pt1_avg, pt2_avg, cv::Scalar(255,0,0), 1); // 하얀 선으로 그리기
-			src.copyTo(src_ROI);
-			line(src_ROI, pt1_avg, pt2_avg, cv::Scalar(255,0,0), 1); // 하얀 선으로 그리기
+			if(group1_cnt>0){
+				rho_avg /= group1_cnt;
+				theta_avg /= group1_cnt;
+				
+				if (theta_avg < PI/4. || theta_avg > 3.*PI/4.) { // 수직 행
+					pt1_xy = rho_avg/cos(theta_avg);
+					pt2_xy = (rho_avg-result.rows*sin(theta_avg))/cos(theta_avg);
+
+					Point pt1(pt1_xy, 0); // 첫 행에서 해당 선의 교차점   
+					Point pt2(pt2_xy, result.rows);
+					line(src_ROI, pt1, pt2, cv::Scalar(255,0,0), 1); // blue line
+				}
+				else{
+					pt1_xy = rho_avg/sin(theta_avg);
+					pt2_xy = (rho_avg-result.cols*cos(theta_avg))/sin(theta_avg);
+
+					Point pt1(0,pt1_xy); // 첫 번째 열에서 해당 선의 교차점  
+					Point pt2(result.cols,pt2_xy);
+					line(src_ROI, pt1, pt2, cv::Scalar(255,0,0), 1); // blue line
+				}				
+			}
+			
+			if(group2_cnt>0){
+				rho_avg2 /= group2_cnt;
+				theta_avg2 /= group2_cnt;
+				
+				if (theta_avg2 < PI/4. || theta_avg2 > 3.*PI/4.) { // 수직 행
+					pt3_xy = rho_avg2/cos(theta_avg2);
+					pt4_xy = (rho_avg2-result.rows*sin(theta_avg2))/cos(theta_avg2);
+
+					Point pt1(pt3_xy, 0); // 첫 행에서 해당 선의 교차점   
+					Point pt2(pt4_xy, result.rows);
+					line(src_ROI, pt1, pt2, cv::Scalar(255,0,0), 1); // blue line
+				}
+				else{
+					pt3_xy = rho_avg2/sin(theta_avg2);
+					pt4_xy = (rho_avg2-result.cols*cos(theta_avg2))/sin(theta_avg2);
+
+					Point pt1(0,pt3_xy); // 첫 번째 열에서 해당 선의 교차점  
+					Point pt2(result.cols,pt4_xy);
+					line(src_ROI, pt1, pt2, cv::Scalar(255,0,0), 1); // blue line
+				}
+			}
+			
 			detect_line = 1;
 
 			theta_avg = 90-(theta_avg*57.3);
+			/*
 			if(-5<theta_avg && theta_avg<5){
 				int pt_mid = (pt1_y+pt2_y)/2;
 				line(src_line, Point(160,319), Point(160,pt_mid), cv::Scalar(128,0,255), 1);
@@ -581,6 +732,7 @@ int detect_ball_line(){
 				string str_Line_distance = ss_Line_distance.str();
 				putText(src_line, str_Line_distance, Point2f(70, 220), FONT_HERSHEY_PLAIN, 0.7, Scalar(128, 0, 255), 1, 8, false);
 			}
+			*/
 			stringstream ss_Line_degree;
 			ss_Line_degree << "Degree: " << theta_avg;
 			string str_Line_degree = ss_Line_degree.str();
