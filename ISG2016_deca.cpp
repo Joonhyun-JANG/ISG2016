@@ -132,9 +132,9 @@ int main( int argc, char** argv )
 		imshow(window_src, src);
 		src.copyTo(src_ROI);
 ///////test code start ///////////	
-		filter_milk_and_line();
+		/*filter_milk_and_line();
 		delete_outofline(detect_ball_line());
-		CannyThreshold(0, 0);
+		CannyThreshold(0, 0);*/
 ///////test code end   ///////////
 
 		while (serialDataAvail(fd))
@@ -143,6 +143,8 @@ int main( int argc, char** argv )
 				printf("@%5d@ robot: %3d  ", command_cmd++, tmp=serialGetchar(fd));
 				
 				switch(tmp){
+					case 1: printf("received1\n"); break;
+					case 2: printf("received2\n"); break;
 					case 29: look_down = 0; break;
 					case 31: look_down = 1; break;
 					case 95: printf("find milk(30~150) "); 
@@ -213,13 +215,13 @@ int main( int argc, char** argv )
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
-							if(milk_finded==2 || milk_finded==5 || milk_finded==3 || milk_finded==6){
+							if(80<milk_x_max/80 && milk_x_max/80<240){
 								printf(" -> %3d\n", milk_finded);
-								serialPutchar (fd, (unsigned char)1); 	
+								serialPutchar (fd, (unsigned char)128+milk_finded); 	
 							}
 							else{
 								printf(" -> Not founded\n");
-								serialPutchar (fd, (unsigned char)0);
+								serialPutchar (fd, (unsigned char)128+0);
 							}
 						}
 						else{
