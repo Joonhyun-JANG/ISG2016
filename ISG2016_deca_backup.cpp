@@ -47,8 +47,6 @@ char window_Edge[15] = "Edge Map";
 char window_HSV[15] = "Hue based";
 char window_ROI[15] = "ROI";
 char window_Line[15] = "line find";
-char window_src[15] = "Original";
-
 int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
 int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
 
@@ -94,7 +92,7 @@ void UpdateFPS(){
 	stringstream ss_fps;
 		ss_fps << "!!!!" << fps_tmp;	
 		string str_fps = ss_fps.str();
-		putText(src, str_fps, Point(160,120), FONT_HERSHEY_PLAIN, 1, Scalar(128, 0, 255), 1, 8, false);
+		putText(src_edge, str_fps, Point(160,120), FONT_HERSHEY_PLAIN, 1, Scalar(128, 0, 255), 1, 8, false);
 	
 	if(timeElapsed >= 1.0f){
 		float fps = (float)frameCount/timeElapsed;
@@ -103,7 +101,6 @@ void UpdateFPS(){
 		
 		frameCount = 0;
 		timeElapsed = 0.0f;
-		
 		//lastTime = curTime;
 	}else{
 	}
@@ -125,8 +122,6 @@ int main( int argc, char** argv )
 {
 	int first_frame = 1;
 	int look_down = 0;
-	int command_cmd=0;
-
 	if (initialize() == -1) return -1;
 	load_settings();
 	make_windows();
@@ -144,104 +139,121 @@ int main( int argc, char** argv )
 			src_edge.create( src.size(), src.type() );
 			src_line.create( src.size(), src.type() );
 			src_ROI.create( src.size(), src.type() );
-			src_HSV.create( src.size(), src.type() );
 			first_frame = 0;
 		}
 		UpdateFPS();
-		imshow(window_src, src);
-		while (serialDataAvail(fd))
-		{
-				int tmp;
-				printf("@%5d@ robot: %3d\n", command_cmd++, tmp=serialGetchar(fd));
-				
-				switch(tmp){
-					case 29: look_down = 0; break;
-					case 31: look_down = 1; break;
-					case 95: printf("find milk(30~150) "); 
-						CannyThreshold(0, 0);
-						if(milk_x_max>107 && milk_x_max<214){
-							serialPutchar (fd, (unsigned char)1); 
-							printf(" -> yes\n");
-						}
-						else{
-							serialPutchar (fd, (unsigned char)0); 
-							printf(" -> no\n");
-							src_ROI = Scalar::all(0);
-						}	
-						break;
-					case 96: printf("Where is milk? "); 
-						CannyThreshold(0, 0);
-						if(milk_y_max>0 && milk_x_max>0) {
-							if(look_down == 0){
-								int milk_finded;
-								if(milk_y_max>80){
-									milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
-								}
-								else{
-									milk_finded=9+(milk_x_max/107);
-								}
-								serialPutchar (fd, (unsigned char)milk_finded); 
-								printf(" -> %3d(front)\n", milk_finded);
-							}
-							else if(look_down == 1){
-								int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
-								serialPutchar (fd, (unsigned char)milk_finded); 
-								printf(" -> %3d(down)\n", milk_finded);
-							}
-						}
-						else{
-							printf("Not founded\n");
-							src_ROI = Scalar::all(0);
-							serialPutchar (fd, (unsigned char)0); 
-						}
-						//printf("a");
-						break;
-					case 97: printf("Look down\n"); 
-						look_down = 1;
-						break;
-					case 99: printf("Look front\n"); 
-						look_down = 0;
-						break;
-					case 105: printf("ISG19 milk_horizon(2,5)");
-						CannyThreshold(0, 0);
-						if(milk_y_max>0 && milk_x_max>0) {
-							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
-							if(milk_finded==2 || milk_finded==5 || milk_finded==3 || milk_finded==6){
-								printf(" -> %3d\n", milk_finded);
-								serialPutchar (fd, (unsigned char)1); 	
-							}
-							else{
-								printf(" -> Not founded\n");
-								serialPutchar (fd, (unsigned char)0);
-								src_ROI = Scalar::all(0);
-							}
-						}
-						else{
-								printf(" -> Not founded\n");
-								serialPutchar (fd, (unsigned char)0);
-								src_ROI = Scalar::all(0);
-						}
-						look_down = 1;
-						break; 
 
-					case 106: printf("ISG19 milk_horizon(1~6)");
-						CannyThreshold(0, 0);
-						if(milk_y_max>0 && milk_x_max>0) {
-							printf(" -> %3d\n", 6-(int)(milk_y_max/40));
-							serialPutchar (fd, (unsigned char)6-(int)(milk_y_max/40));
-						}
-						else{
-							printf(" -> Not founded\n");
-							serialPutchar (fd, (unsigned char)0); 
-							src_ROI = Scalar::all(0);
-						}
-						look_down = 1;
-						break; 
+		// Hue based start
+		cvtColor(src, src_HSV, COLOR_BGR2HSV);
+		src.copyTo(src_ROI);
+
+
+
+		for (int i = 0; i<HEIGHT; i++) {
+			for (int j = 0; j<WIDTH; j++) {
+				if (src_HSV.at<Vec3b>(i, j).val[0]<lowRedThres || src_HSV.at<Vec3b>(i, j).val[0]>highRedThres) {
+					// find RED
+					int BG_tmp;
+					BG_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[1]) / 2;
+					if ((src.at<Vec3b>(i, j).val[2] - BG_tmp)>diffRedThres) {
+						src_HSV.at<Vec3b>(i, j).val[0] = 0;
+						src_HSV.at<Vec3b>(i, j).val[1] = 0;
+						src_HSV.at<Vec3b>(i, j).val[2] = 255;
+						
+						src_line.at<Vec3b>(i, j).val[0] = 0;
+						src_line.at<Vec3b>(i, j).val[1] = 0;
+						src_line.at<Vec3b>(i, j).val[2] = 255;
+					}
+					else {
+						src_HSV.at<Vec3b>(i, j).val[0] = 0;
+						src_HSV.at<Vec3b>(i, j).val[1] = 0;
+						src_HSV.at<Vec3b>(i, j).val[2] = 0;
+
+						src_line.at<Vec3b>(i, j).val[0] = 0;
+						src_line.at<Vec3b>(i, j).val[1] = 0;
+						src_line.at<Vec3b>(i, j).val[2] = 0;
+					}
 				}
-				fflush (stdout) ;
-		}
-		//current time-pre time;
+				else if (lowGreenThres < src_HSV.at<Vec3b>(i, j).val[0] && src_HSV.at<Vec3b>(i, j).val[0]<highGreenThres) {
+					// find Green
+					int RB_tmp;
+					RB_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[2]) / 2;
+					if ((src.at<Vec3b>(i, j).val[1] - RB_tmp)>diffGreenThres) {
+						src_HSV.at<Vec3b>(i, j).val[0] = 0;
+						src_HSV.at<Vec3b>(i, j).val[1] = 255;
+						src_HSV.at<Vec3b>(i, j).val[2] = 0;
+					}
+					else {
+						src_HSV.at<Vec3b>(i, j).val[0] = 0;
+						src_HSV.at<Vec3b>(i, j).val[1] = 0;
+						src_HSV.at<Vec3b>(i, j).val[2] = 0;
 
+						src_line.at<Vec3b>(i, j).val[0] = 0;
+						src_line.at<Vec3b>(i, j).val[1] = 0;
+						src_line.at<Vec3b>(i, j).val[2] = 0;
+					}
+
+				}
+				else {
+					src_HSV.at<Vec3b>(i, j).val[0] = 0;
+					src_HSV.at<Vec3b>(i, j).val[1] = 0;
+					src_HSV.at<Vec3b>(i, j).val[2] = 0;
+
+					src_line.at<Vec3b>(i, j).val[0] = 0;
+					src_line.at<Vec3b>(i, j).val[1] = 0;
+					src_line.at<Vec3b>(i, j).val[2] = 0;
+				}
+			}
+		}
+
+		imshow(window_HSV, src_HSV);
+
+		if(detect_ball_line() == 1){ // line detected
+			int line_start=0;
+			
+			for(int j=0;j<WIDTH;j++){
+				int i_tmp=0;
+				for(int i=0;i<HEIGHT;i++){	// delete out of line
+					if(src_ROI.at<Vec3b>(i, j).val[0] == 255){
+						i_tmp = i;
+						if(line_start==0) line_start=1;
+						break;
+					}		
+				}
+				if(i_tmp==0 && line_start==1) line_start=2;
+				if(i_tmp==0 && line_start==0){ // before
+					if(theta_avg>0){
+						for(int i=0;i<HEIGHT;i++){
+							src_ROI.at<Vec3b>(i, j).val[0] = 0;
+							src_ROI.at<Vec3b>(i, j).val[1] = 0;
+							src_ROI.at<Vec3b>(i, j).val[2] = 0;
+						}
+					}
+
+				}
+				if(i_tmp==0 && line_start==2){ // end
+					if(theta_avg<0){
+						for(int i=0;i<HEIGHT;i++){
+							src_ROI.at<Vec3b>(i, j).val[0] = 0;
+							src_ROI.at<Vec3b>(i, j).val[1] = 0;
+							src_ROI.at<Vec3b>(i, j).val[2] = 0;
+						}
+					}
+				}
+				if(i_tmp!=0){ // line inside 
+					for(int i=0;i<i_tmp;i++){
+						src_ROI.at<Vec3b>(i, j).val[0] = 0;
+						src_ROI.at<Vec3b>(i, j).val[1] = 0;
+						src_ROI.at<Vec3b>(i, j).val[2] = 0;
+					}
+				}
+			}
+				
+		}
+
+	
+		cvtColor(src_ROI, src_gray, CV_BGR2GRAY);
+		CannyThreshold(0, 0);
 		if(look_down==0){
 			for(int i=0;i<HEIGHT;i+=80){
 				for(int j=0;j<WIDTH;j++){
@@ -287,8 +299,9 @@ int main( int argc, char** argv )
 		}
 		
 		//cout << milk_x_max/80 << " " << milk_y_max/80 << endl;
+		
 		imshow(window_ROI, src_ROI);
-		imshow(window_HSV, src_HSV);
+		
 		imshow(window_Edge, src_edge);
 		
 
@@ -308,7 +321,101 @@ int main( int argc, char** argv )
 			make_windows();
 		}
 		
+		while (serialDataAvail(fd))
+		{
+				int tmp;
+				char input_test;
+				printf("A");
+				printf(" robot: %3d\n", tmp=serialGetchar(fd));
+				
+				switch(tmp){
+					case 29: look_down = 0; break;
+					case 31: look_down = 1; break;
+					case 95: printf("find milk(30~150) "); 
+						if(milk_x_max>107 && milk_x_max<214){
+							serialPutchar (fd, (unsigned char)1); 
+							printf(" -> yes\n");
+						}
+						else{
+							serialPutchar (fd, (unsigned char)0); 
+							printf(" -> no\n");
+						}	
+						break;
+					case 96: printf("Where is milk? "); 
+						if(milk_y_max>0 && milk_x_max>0) {
+							if(look_down == 0){
+								int milk_finded;
+								if(milk_y_max>80){
+									milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+								}
+								else{
+									milk_finded=9+(milk_x_max/107);
+								}
+								serialPutchar (fd, (unsigned char)milk_finded); 
+								printf(" -> %3d(front)\n", milk_finded);
+							}
+							else if(look_down == 1){
+								int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
+								serialPutchar (fd, (unsigned char)milk_finded); 
+								printf(" -> %3d(down)\n", milk_finded);
+							}
+						}
+						else{
+							printf("Not founded\n");
+							serialPutchar (fd, (unsigned char)0); 
+						}
+						//printf("a");
+						break;
+					case 97: printf("Look down\n"); 
+						look_down = 1;
+						/*if(milk_y_max>0 && milk_x_max>0) {
+							int milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+							serialPutchar (fd, (unsigned char)milk_finded); 
+							printf(" -> %3d\n", milk_finded);
+						}
+						else{
+							printf("Not founded\n");
+							serialPutchar (fd, (unsigned char)38); 
+						}*/
+						//printf("a");
+						break;
+					case 99: printf("Look front\n"); 
+						look_down = 0;
+						break;
+					case 105: printf("ISG19 milk_horizon(2,5)");
+						if(milk_y_max>0 && milk_x_max>0) {
+							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
+							if(milk_finded==2 || milk_finded==5){
+								printf(" -> %3d\n", milk_finded);
+								serialPutchar (fd, (unsigned char)1); 	
+							}
+							else{
+								printf(" -> Not founded\n");
+								serialPutchar (fd, (unsigned char)0);
+							}
+						}
+						else{
+								printf(" -> Not founded\n");
+								serialPutchar (fd, (unsigned char)0);
+						}
+						look_down = 1;
+						break; 
 
+					case 106: printf("ISG19 milk_horizon(1~6)");
+						if(milk_y_max>0 && milk_x_max>0) {
+							printf(" -> %3d\n", 6-(int)(milk_y_max/40));
+							serialPutchar (fd, (unsigned char)6-(int)(milk_y_max/40));
+						}
+						else{
+							printf(" -> Not founded\n");
+							serialPutchar (fd, (unsigned char)0); 
+						}
+						look_down = 1;
+						break; 
+				}
+				fflush (stdout) ;
+		}
+		//current time-pre time;
 		
 		// Wait until user exit program by pressing a key
 		waitKey(5);
@@ -369,8 +476,6 @@ void make_windows(){
 	namedWindow(window_Line, CV_WINDOW_AUTOSIZE);
 	createTrackbar("line_thres:", window_Line, &lineThreshold, 320, ThresRefresh);
 	createTrackbar("vote_thres:", window_Line, &voteThreshold, 320, ThresRefresh);
-
-	namedWindow(window_src, CV_WINDOW_AUTOSIZE);
 }
 
 void ThresRefresh(int, void*){
@@ -379,67 +484,7 @@ void ThresRefresh(int, void*){
 
 void CannyThreshold(int, void*)
 {
-	// Hue based start
-		cvtColor(src, src_HSV, COLOR_BGR2HSV);
 
-		for (int i = 0; i<HEIGHT; i++) {
-			for (int j = 0; j<WIDTH; j++) {
-				if (src_HSV.at<Vec3b>(i, j).val[0]<lowRedThres || src_HSV.at<Vec3b>(i, j).val[0]>highRedThres) {
-					// find RED
-					int BG_tmp;
-					BG_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[1]) / 2;
-					if ((src.at<Vec3b>(i, j).val[2] - BG_tmp)>diffRedThres) {
-						src_HSV.at<Vec3b>(i, j).val[0] = 0;
-						src_HSV.at<Vec3b>(i, j).val[1] = 0;
-						src_HSV.at<Vec3b>(i, j).val[2] = 255;
-						
-						src_line.at<Vec3b>(i, j).val[0] = 0;
-						src_line.at<Vec3b>(i, j).val[1] = 0;
-						src_line.at<Vec3b>(i, j).val[2] = 255;
-					}
-					else {
-						src_HSV.at<Vec3b>(i, j).val[0] = 0;
-						src_HSV.at<Vec3b>(i, j).val[1] = 0;
-						src_HSV.at<Vec3b>(i, j).val[2] = 0;
-
-						src_line.at<Vec3b>(i, j).val[0] = 0;
-						src_line.at<Vec3b>(i, j).val[1] = 0;
-						src_line.at<Vec3b>(i, j).val[2] = 0;
-					}
-				}
-				else if (lowGreenThres < src_HSV.at<Vec3b>(i, j).val[0] && src_HSV.at<Vec3b>(i, j).val[0]<highGreenThres) {
-					// find Green
-					int RB_tmp;
-					RB_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[2]) / 2;
-					if ((src.at<Vec3b>(i, j).val[1] - RB_tmp)>diffGreenThres) {
-						src_HSV.at<Vec3b>(i, j).val[0] = 0;
-						src_HSV.at<Vec3b>(i, j).val[1] = 255;
-						src_HSV.at<Vec3b>(i, j).val[2] = 0;
-					}
-					else {
-						src_HSV.at<Vec3b>(i, j).val[0] = 0;
-						src_HSV.at<Vec3b>(i, j).val[1] = 0;
-						src_HSV.at<Vec3b>(i, j).val[2] = 0;
-
-						src_line.at<Vec3b>(i, j).val[0] = 0;
-						src_line.at<Vec3b>(i, j).val[1] = 0;
-						src_line.at<Vec3b>(i, j).val[2] = 0;
-					}
-
-				}
-				else {
-					src_HSV.at<Vec3b>(i, j).val[0] = 0;
-					src_HSV.at<Vec3b>(i, j).val[1] = 0;
-					src_HSV.at<Vec3b>(i, j).val[2] = 0;
-
-					src_line.at<Vec3b>(i, j).val[0] = 0;
-					src_line.at<Vec3b>(i, j).val[1] = 0;
-					src_line.at<Vec3b>(i, j).val[2] = 0;
-				}
-			}
-		}
-
-	cvtColor(src, src_gray, CV_BGR2GRAY);
   /// Reduce noise with a kernel 3x3
 	blur( src_gray, detected_edges, Size(3,3) );
 
@@ -500,7 +545,7 @@ void CannyThreshold(int, void*)
 		}
 	}
 */
-	//boundRect2.resize(refinery_count);
+	boundRect2.resize(refinery_count);
 
 
  }
