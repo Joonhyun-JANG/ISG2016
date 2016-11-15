@@ -15,8 +15,6 @@
 #include <string.h>
 #include <math.h>
 
-#include <omp.h>
-
 
 using namespace cv;
 using namespace std;
@@ -25,10 +23,12 @@ using namespace std;
 
 int fd;
 int milk_x_max=0, milk_y_max=0;
+int look_down;
+
 VideoCapture cap(0);
 
-Mat src, src_gray, src_HSV, src_ROI, src_line;;
-Mat src_edge, detected_edges;
+Mat src, src_gray, src_HSV, src_ROI, src_line;
+Mat src_edge, detected_edges, src_status;
 
 // for canny detect
 int edgeThresh = 1, lowThreshold, ratio = 3, kernel_size = 3;
@@ -37,9 +37,12 @@ int const max_lowThreshold = 300;
 // for HSV converting
 int lowRedThres = 0, highRedThres = 0, lowGreenThres = 0, highGreenThres = 0;
 int diffRedThres = 0, diffGreenThres = 0;
+int saturationThres = 0;
 
 // for line detecting
 int lineThreshold=0, voteThreshold=80;
+int line_distance_front[270]={0,};
+
 
 int milk_width_min=0, milk_width_max=0, milk_height_min=0, milk_height_max=0;
 int exit_status=0,input_status=0;
@@ -48,6 +51,7 @@ char window_HSV[15] = "Hue based";
 char window_ROI[15] = "ROI";
 char window_Line[15] = "line find";
 char window_src[15] = "Original";
+char window_status[15] = "STATUS";
 
 int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
 int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
@@ -77,40 +81,8 @@ tick32_t get_tick_count(){\
 }
 
 
-void UpdateFPS(){
 
-	static DWORD frameCount = 0;
-	static float timeElapsed = 0.0f;
-
-	DWORD curTime = get_tick_count();
-	float timeDelta = (curTime - lastTime)*0.001f;
-	
-	timeElapsed += timeDelta;
-
-	frameCount++;
-	//timeDelta is SPF (sec per frame)
-	//printf("timeDelta : %f\n", timeDelta);
-	//printf("cur : %d, last : %d\n", curTime, lastTime);
-	stringstream ss_fps;
-		ss_fps << "!!!!" << fps_tmp;	
-		string str_fps = ss_fps.str();
-		putText(src, str_fps, Point(160,120), FONT_HERSHEY_PLAIN, 1, Scalar(128, 0, 255), 1, 8, false);
-	
-	if(timeElapsed >= 1.0f){
-		float fps = (float)frameCount/timeElapsed;
-		fps_tmp = fps;
-		//printf("frameCount : %d, timeElapsed : %f, fps : %f\n", frameCount, timeElapsed, fps);
-		
-		frameCount = 0;
-		timeElapsed = 0.0f;
-		
-		//lastTime = curTime;
-	}else{
-	}
-	lastTime = curTime;
-}
-
-
+////// functions definition //////
 
 int initialize();
 void make_windows();
@@ -119,21 +91,27 @@ void CannyThreshold(int, void*);
 int detect_ball_line();
 void load_settings();
 void save_settings();
+void filter_milk_and_line();
+void delete_outofline(int line_YN);
+void UpdateFPS();
+
 
 /** @function main */
 int main( int argc, char** argv )
 {
 	int first_frame = 1;
-	int look_down = 0;
 	int command_cmd=0;
+	look_down = 0;
 
 	if (initialize() == -1) return -1;
 	load_settings();
+	
 	make_windows();
-
 	lastTime = get_tick_count();
 
 	while(1){
+		
+		if(command_cmd>9999) command_cmd=0;
 		bool bSuccess = cap.read(src);
 		if (!bSuccess)
 		{
@@ -145,19 +123,31 @@ int main( int argc, char** argv )
 			src_line.create( src.size(), src.type() );
 			src_ROI.create( src.size(), src.type() );
 			src_HSV.create( src.size(), src.type() );
+			src_status.create( src.size(), src.type() );
 			first_frame = 0;
 		}
+
+		src_status = Scalar::all(0);
 		UpdateFPS();
 		imshow(window_src, src);
+		src.copyTo(src_ROI);
+///////test code start ///////////	
+		filter_milk_and_line();
+		delete_outofline(detect_ball_line());
+		CannyThreshold(0, 0);
+///////test code end   ///////////
+
 		while (serialDataAvail(fd))
 		{
 				int tmp;
-				printf("@%5d@ robot: %3d\n", command_cmd++, tmp=serialGetchar(fd));
+				printf("@%5d@ robot: %3d  ", command_cmd++, tmp=serialGetchar(fd));
 				
 				switch(tmp){
 					case 29: look_down = 0; break;
 					case 31: look_down = 1; break;
 					case 95: printf("find milk(30~150) "); 
+						src_ROI = Scalar::all(0);
+						filter_milk_and_line();
 						CannyThreshold(0, 0);
 						if(milk_x_max>107 && milk_x_max<214){
 							serialPutchar (fd, (unsigned char)1); 
@@ -166,10 +156,11 @@ int main( int argc, char** argv )
 						else{
 							serialPutchar (fd, (unsigned char)0); 
 							printf(" -> no\n");
-							src_ROI = Scalar::all(0);
 						}	
 						break;
 					case 96: printf("Where is milk? "); 
+						src_ROI = Scalar::all(0);
+						filter_milk_and_line();
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							if(look_down == 0){
@@ -199,10 +190,26 @@ int main( int argc, char** argv )
 					case 97: printf("Look down\n"); 
 						look_down = 1;
 						break;
+					case 98: printf("Line detect: "); 
+
+						filter_milk_and_line();
+						if(detect_ball_line() == 1){ // line detected
+							
+				
+
+						// send degree
+						
+						}
+						
+						break;
+
+
 					case 99: printf("Look front\n"); 
 						look_down = 0;
 						break;
 					case 105: printf("ISG19 milk_horizon(2,5)");
+						src_ROI = Scalar::all(0);
+						filter_milk_and_line();
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
@@ -213,18 +220,18 @@ int main( int argc, char** argv )
 							else{
 								printf(" -> Not founded\n");
 								serialPutchar (fd, (unsigned char)0);
-								src_ROI = Scalar::all(0);
 							}
 						}
 						else{
 								printf(" -> Not founded\n");
 								serialPutchar (fd, (unsigned char)0);
-								src_ROI = Scalar::all(0);
 						}
 						look_down = 1;
 						break; 
 
 					case 106: printf("ISG19 milk_horizon(1~6)");
+						src_ROI = Scalar::all(0);
+						filter_milk_and_line();
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							printf(" -> %3d\n", 6-(int)(milk_y_max/40));
@@ -290,7 +297,7 @@ int main( int argc, char** argv )
 		imshow(window_ROI, src_ROI);
 		imshow(window_HSV, src_HSV);
 		imshow(window_Edge, src_edge);
-		
+		imshow(window_status, src_status);
 
 		if(exit_status==1) break;
 		if(input_status==1){
@@ -358,6 +365,7 @@ void make_windows(){
 	createTrackbar("Green Min:", window_HSV, &lowGreenThres, 255, ThresRefresh);
 	createTrackbar("Green Max:", window_HSV, &highGreenThres, 255, ThresRefresh);
 	createTrackbar("Green Diff:", window_HSV, &diffGreenThres, 255, ThresRefresh);	
+	createTrackbar("S Diff:", window_HSV, &saturationThres, 255, ThresRefresh);	
 
 	// Create a "ROI window"
 	namedWindow(window_ROI, CV_WINDOW_AUTOSIZE);
@@ -365,7 +373,18 @@ void make_windows(){
 	createTrackbar("width_max:", window_ROI, &milk_width_max, 320, ThresRefresh);
 	createTrackbar("height_min:", window_ROI, &milk_height_min, 240, ThresRefresh);
 	createTrackbar("height_max:", window_ROI, &milk_height_max, 240, ThresRefresh);
+	
+	createTrackbar("width_min2:", window_ROI, &milk_width_min, 320, ThresRefresh);
+	createTrackbar("width_max2:", window_ROI, &milk_width_max, 320, ThresRefresh);
+	createTrackbar("height_min2:", window_ROI, &milk_height_min, 240, ThresRefresh);
+	createTrackbar("height_max2:", window_ROI, &milk_height_max, 240, ThresRefresh);
+	
+	createTrackbar("width_min3:", window_ROI, &milk_width_min, 320, ThresRefresh);
+	createTrackbar("width_max3:", window_ROI, &milk_width_max, 320, ThresRefresh);
+	createTrackbar("height_min3:", window_ROI, &milk_height_min, 240, ThresRefresh);
+	createTrackbar("height_max3:", window_ROI, &milk_height_max, 240, ThresRefresh);
 
+	// Create a "Line window"
 	namedWindow(window_Line, CV_WINDOW_AUTOSIZE);
 	createTrackbar("line_thres:", window_Line, &lineThreshold, 320, ThresRefresh);
 	createTrackbar("vote_thres:", window_Line, &voteThreshold, 320, ThresRefresh);
@@ -377,9 +396,8 @@ void ThresRefresh(int, void*){
 
 }
 
-void CannyThreshold(int, void*)
-{
-	// Hue based start
+void filter_milk_and_line(){
+		// Hue based start
 		cvtColor(src, src_HSV, COLOR_BGR2HSV);
 
 		for (int i = 0; i<HEIGHT; i++) {
@@ -411,7 +429,7 @@ void CannyThreshold(int, void*)
 					// find Green
 					int RB_tmp;
 					RB_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[2]) / 2;
-					if ((src.at<Vec3b>(i, j).val[1] - RB_tmp)>diffGreenThres) {
+					if ((src.at<Vec3b>(i, j).val[1] - RB_tmp)>diffGreenThres && src_HSV.at<Vec3b>(i, j).val[0]>saturationThres ) {
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
 						src_HSV.at<Vec3b>(i, j).val[1] = 255;
 						src_HSV.at<Vec3b>(i, j).val[2] = 0;
@@ -438,6 +456,11 @@ void CannyThreshold(int, void*)
 				}
 			}
 		}
+
+}
+void CannyThreshold(int, void*)
+{
+	
 
 	cvtColor(src, src_gray, CV_BGR2GRAY);
   /// Reduce noise with a kernel 3x3
@@ -479,7 +502,7 @@ void CannyThreshold(int, void*)
 				}
 				rectangle(src_ROI, boundRect[i].tl(), boundRect[i].br(), Scalar(128,0,128), 1, 8, 0);
 				stringstream ss_milk;
-				ss_milk << (boundRect[i].tl().x+boundRect[i].br().x)/2 << " " << boundRect[i].br().y;	
+				ss_milk << boundRect[i].br().x-boundRect[i].tl().x << " " << boundRect[i].br().y-boundRect[i].tl().y;	
 				string str_milk = ss_milk.str();
 				putText(src_ROI, str_milk, boundRect[i].tl(), FONT_HERSHEY_PLAIN, 0.7, Scalar(128, 0, 255), 1, 8, false);
 			}
@@ -513,6 +536,8 @@ int detect_ball_line(){
 		int detect_line = 0;
 		int group1_cnt=0, group2_cnt=0;
 		float group1_theta[3]={999,999,999}, group2_theta[3]={999,999,999};
+		float mid_theta = 0; // real mid line
+		int mid_theta_group = 0;
 		theta_avg = 0, theta_avg2 = 0;
 
 		cv::Mat contours;
@@ -530,7 +555,7 @@ int detect_ball_line(){
 		// 선 벡터를 반복해 선 그리기
 		std::vector<cv::Vec2f>::const_iterator it= lines.begin();
 		float rho_avg=0, rho_avg2=0; 
-		int tmp_line=80;
+
 		while (it!=lines.end()) {
 			float rho = (*it)[0];   // 첫 번째 요소는 rho 거리
 			float theta = (*it)[1]; // 두 번째 요소는 델타 각도
@@ -623,13 +648,6 @@ int detect_ball_line(){
 				
 			}
 			++it;
-
-			stringstream ss_Line_degree;
-			ss_Line_degree << "Degree: " << 90-(theta*57.3);
-			string str_Line_degree = ss_Line_degree.str();
-			putText(src_line, str_Line_degree, Point2f(10, tmp_line), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
-			
-			tmp_line += 15;
 		}
 		
 		if(lines.size()!=0){ // draw median line
@@ -668,6 +686,8 @@ int detect_ball_line(){
 					line(src_ROI, pt1, pt2, cv::Scalar(255,0,0), 1); // blue line
 				}				
 			}
+			mid_theta = theta_avg; // group1 is mid
+			mid_theta_group = 1;
 			
 			if(group2_cnt>0){
 				rho_avg2 /= group2_cnt;
@@ -689,23 +709,31 @@ int detect_ball_line(){
 					Point pt2(result.cols,pt4_xy);
 					line(src_ROI, pt1, pt2, cv::Scalar(255,0,0), 1); // blue line
 				}
+				if(abs(90-(theta_avg*57.3))>abs(90-(theta_avg2*57.3))){
+					mid_theta = theta_avg2;
+					mid_theta_group = 2; // group2 is mid
+				}
 			}
+			
 			
 			detect_line = 1;
 
-			theta_avg = 90-(theta_avg*57.3);
-			/*
-			if(-5<theta_avg && theta_avg<5){
-				int pt_mid = (pt1_y+pt2_y)/2;
+			mid_theta = 90-(mid_theta*57.3);
+			
+			if(-5<mid_theta && mid_theta<5){
+				int pt_mid;
+				if(mid_theta_group == 1) pt_mid = (pt1_xy+pt2_xy)/2;
+				else if(mid_theta_group == 2) pt_mid = (pt1_xy+pt2_xy)/2;
 				line(src_line, Point(160,319), Point(160,pt_mid), cv::Scalar(128,0,255), 1);
 				stringstream ss_Line_distance;
-				ss_Line_distance << "Distance: " << HEIGHT-pt_mid;	
+				if(look_down==0) ss_Line_distance << "Distance: " << line_distance_front[HEIGHT-pt_mid] << "cm (" << HEIGHT-pt_mid << ")";	
 				string str_Line_distance = ss_Line_distance.str();
-				putText(src_line, str_Line_distance, Point2f(70, 220), FONT_HERSHEY_PLAIN, 0.7, Scalar(128, 0, 255), 1, 8, false);
+				putText(src_line, str_Line_distance, Point2f(10, 220), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
+				putText(src_status, str_Line_distance, Point2f(10, 220), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
 			}
-			*/
+			
 			stringstream ss_Line_degree;
-			ss_Line_degree << "Degree: " << theta_avg;
+			ss_Line_degree << "Degree: " << mid_theta;
 			string str_Line_degree = ss_Line_degree.str();
 			putText(src_line, str_Line_degree, Point2f(180, 235), FONT_HERSHEY_PLAIN, 0.7, Scalar(255, 255, 255), 1, 8, false);
 		}
@@ -743,43 +771,134 @@ int detect_ball_line(){
 
 
 void load_settings() {
+	char tmp[25];
+	int tmp_int;
+
 	fp = fopen("./threshold.txt", "r");
-	fscanf(fp, "%d", &lowRedThres);
-	fscanf(fp, "%d", &highRedThres);
-	fscanf(fp, "%d", &diffRedThres);
+	fscanf(fp, "%s %d", tmp, &lowRedThres);
+	fscanf(fp, "%s %d", tmp, &highRedThres);
+	fscanf(fp, "%s %d", tmp, &diffRedThres);
 
-	fscanf(fp, "%d", &lowGreenThres);
-	fscanf(fp, "%d", &highGreenThres);
-	fscanf(fp, "%d", &diffGreenThres);
+	fscanf(fp, "%s %d", tmp, &lowGreenThres);
+	fscanf(fp, "%s %d", tmp, &highGreenThres);
+	fscanf(fp, "%s %d", tmp, &diffGreenThres);
 
-	fscanf(fp, "%d", &lowThreshold);
+	fscanf(fp, "%s %d", tmp, &lowThreshold);
 
-	fscanf(fp, "%d", &milk_width_min);
-	fscanf(fp, "%d", &milk_width_max);
-	fscanf(fp, "%d", &milk_height_min);
-	fscanf(fp, "%d", &milk_height_max);
+	fscanf(fp, "%s %d", tmp, &milk_width_min);
+	fscanf(fp, "%s %d", tmp, &milk_width_max);
+	fscanf(fp, "%s %d", tmp, &milk_height_min);
+	fscanf(fp, "%s %d", tmp, &milk_height_max);
 
+	fclose(fp);
+
+	fp = fopen("./line_distance_front.txt", "r");
+	for(int i=0;i<270;i++){
+		fscanf(fp, "%d %d", &tmp_int, &line_distance_front[i]); 
+	}
+	printf("load parameter\n");
+	fclose(fp);
 }
 
 void save_settings() {
-	fclose(fp);
+	
 	fp = fopen("./threshold.txt", "w");
-	fprintf(fp, "%d\n", lowRedThres);
-	fprintf(fp, "%d\n", highRedThres);
-	fprintf(fp, "%d\n", diffRedThres);
+	fprintf(fp, "lowRedThres %d\n", lowRedThres);
+	fprintf(fp, "highRedThres %d\n", highRedThres);
+	fprintf(fp, "diffRedThres %d\n", diffRedThres);
 
-	fprintf(fp, "%d\n", lowGreenThres);
-	fprintf(fp, "%d\n", highGreenThres);
-	fprintf(fp, "%d\n", diffGreenThres);
+	fprintf(fp, "lowGreenThres %d\n", lowGreenThres);
+	fprintf(fp, "highGreenThres %d\n", highGreenThres);
+	fprintf(fp, "diffGreenThres %d\n", diffGreenThres);
 
-	fprintf(fp, "%d\n", lowThreshold);
+	fprintf(fp, "lowThreshold %d\n", lowThreshold);
 
-	fprintf(fp, "%d\n", milk_width_min);
-	fprintf(fp, "%d\n", milk_width_max);
-	fprintf(fp, "%d\n", milk_height_min);
-	fprintf(fp, "%d\n", milk_height_max);
+	fprintf(fp, "milk_width_min %d\n", milk_width_min);
+	fprintf(fp, "milk_width_max %d\n", milk_width_max);
+	fprintf(fp, "milk_height_min %d\n", milk_height_min);
+	fprintf(fp, "milk_height_max %d\n", milk_height_max);
 
 	fclose(fp);
 }
 
+void delete_outofline(int line_YN){
+	if(line_YN){
+		int line_start=0;	
+		for(int j=0;j<WIDTH;j++){
+			int i_tmp=0;
+			for(int i=0;i<HEIGHT;i++){	// delete out of line
+				if(src_ROI.at<Vec3b>(i, j).val[0] == 255 && src_ROI.at<Vec3b>(i, j).val[1] == 0){
+					i_tmp = i;
+					if(line_start==0) line_start=1;
+					break;
+				}		
+			}
+
+			if(i_tmp==0 && line_start==1) line_start=2;
+
+			if(i_tmp==0 && line_start==0){ // before line
+				if(theta_avg>0){
+					for(int i=0;i<HEIGHT;i++){
+						
+					}
+				}
+
+			}
+	
+			if(i_tmp==0 && line_start==2){ // line ended
+				if(theta_avg<0){
+					for(int i=0;i<HEIGHT;i++){
+						src_ROI.at<Vec3b>(i, j).val[0] = 0;
+						src_ROI.at<Vec3b>(i, j).val[1] = 0;
+						src_ROI.at<Vec3b>(i, j).val[2] = 0;
+					}
+				}
+			}
+			
+			if(i_tmp!=0){ // line inside 
+				for(int i=0;i<i_tmp;i++){
+					src_ROI.at<Vec3b>(i, j).val[0] = 0;
+					src_ROI.at<Vec3b>(i, j).val[1] = 0;
+					src_ROI.at<Vec3b>(i, j).val[2] = 0;
+				}
+			}
+		}
+
+	} //end if
+}
+
+
+
+void UpdateFPS(){
+
+	static DWORD frameCount = 0;
+	static float timeElapsed = 0.0f;
+
+	DWORD curTime = get_tick_count();
+	float timeDelta = (curTime - lastTime)*0.001f;
+	
+	timeElapsed += timeDelta;
+
+	frameCount++;
+	//timeDelta is SPF (sec per frame)
+	//printf("timeDelta : %f\n", timeDelta);
+	//printf("cur : %d, last : %d\n", curTime, lastTime);
+	stringstream ss_fps;
+		ss_fps << "!!!!" << fps_tmp;	
+		string str_fps = ss_fps.str();
+		putText(src_status, str_fps, Point(160,120), FONT_HERSHEY_PLAIN, 1, Scalar(128, 0, 255), 1, 8, false);
+	
+	if(timeElapsed >= 1.0f){
+		float fps = (float)frameCount/timeElapsed;
+		fps_tmp = fps;
+		//printf("frameCount : %d, timeElapsed : %f, fps : %f\n", frameCount, timeElapsed, fps);
+		
+		frameCount = 0;
+		timeElapsed = 0.0f;
+		
+		//lastTime = curTime;
+	}else{
+	}
+	lastTime = curTime;
+}
 

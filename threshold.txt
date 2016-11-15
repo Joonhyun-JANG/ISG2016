@@ -1,11 +1,11 @@
-54
-170
-37
-29
-132
-28
-57
-24
-165
-20
-138
+lowRedThres 29
+highRedThres 185
+diffRedThres 50
+lowGreenThres 31
+highGreenThres 102
+diffGreenThres 49
+lowThreshold 44
+milk_width_min 0
+milk_width_max 142
+milk_height_min 0
+milk_height_max 46
