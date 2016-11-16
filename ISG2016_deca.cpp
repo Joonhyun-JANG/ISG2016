@@ -127,7 +127,7 @@ int main( int argc, char** argv )
 	int line_distance_data1=0, line_distance_data2=0;
 	int distance_data=0;
 
-	look_down = 1;
+	look_down = 0;
 
 	if (initialize() == -1) return -1;
 	load_settings();
@@ -330,6 +330,7 @@ else if(75<=mid_theta && mid_theta<90){
 					case 105: printf("ISG19 milk_horizon(2~17)");
 						src_ROI = Scalar::all(0);
 						filter_milk_and_line();
+						delete_outofline(detect_ball_line());
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
@@ -352,6 +353,7 @@ else if(75<=mid_theta && mid_theta<90){
 					case 106: printf("ISG19 milk_horizon(1~6)");
 						src_ROI = Scalar::all(0);
 						filter_milk_and_line();
+						delete_outofline(detect_ball_line());
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							printf(" -> %3d\n", 6-(int)(milk_y_max/40));
@@ -366,8 +368,9 @@ else if(75<=mid_theta && mid_theta<90){
 						break; 
 				
 					case 111: printf("Where is milk? "); 
-						src_ROI = Scalar::all(0);
+						//src_ROI = Scalar::all(0);
 						filter_milk_and_line();
+						delete_outofline(detect_ball_line());
 						CannyThreshold(0, 0);
 						int milk_finded;
 						if(milk_y_max>0 && milk_x_max>0) {
@@ -537,7 +540,7 @@ else if(-10<=mid_theta && mid_theta<-5){
 							}
 else if(-5<=mid_theta && mid_theta<5){
 								degree_data=9;
-								distance_data = (HEIGHT-pt_mid)/2 + 160;
+								distance_data = line_distance_front[pt_mid]/2 + 160;
 							}
 else if(5<=mid_theta && mid_theta<10){
 								degree_data=10;
@@ -1271,15 +1274,15 @@ void save_settings() {
 	fprintf(fp, "diffGreenThres_d %d\n", diffGreenThres_d);
 	fprintf(fp, "diffSaturationThres_d %d\n", saturationThres_d);
 
-	fprintf(fp, "milk_width_min3 %d\n", milk_width_min1);
-	fprintf(fp, "milk_width_max3 %d\n", milk_width_max1);
-	fprintf(fp, "milk_height_min3 %d\n", milk_height_min1);
-	fprintf(fp, "milk_height_max3 %d\n", milk_height_max1);
+	fprintf(fp, "milk_width_min3 %d\n", milk_width_min3);
+	fprintf(fp, "milk_width_max3 %d\n", milk_width_max3);
+	fprintf(fp, "milk_height_min3 %d\n", milk_height_min3);
+	fprintf(fp, "milk_height_max3 %d\n", milk_height_max3);
 
-	fprintf(fp, "milk_width_min2 %d\n", milk_width_min1);
-	fprintf(fp, "milk_width_max2 %d\n", milk_width_max1);
-	fprintf(fp, "milk_height_min2 %d\n", milk_height_min1);
-	fprintf(fp, "milk_height_max2 %d\n", milk_height_max1);
+	fprintf(fp, "milk_width_min2 %d\n", milk_width_min2);
+	fprintf(fp, "milk_width_max2 %d\n", milk_width_max2);
+	fprintf(fp, "milk_height_min2 %d\n", milk_height_min2);
+	fprintf(fp, "milk_height_max2 %d\n", milk_height_max2);
 
 	fprintf(fp, "milk_width_min1 %d\n", milk_width_min1);
 	fprintf(fp, "milk_width_max1 %d\n", milk_width_max1);
@@ -1295,10 +1298,10 @@ void save_settings() {
 	fprintf(fp, "lineThreshold_d %d\n", lineThreshold_d);
 	fprintf(fp, "voteThreshold_d %d\n", voteThreshold_d);
 
-	fprintf(fp, "milk_width_min_d %d\n", milk_width_min1);
-	fprintf(fp, "milk_width_max_d %d\n", milk_width_max1);
-	fprintf(fp, "milk_height_min_d %d\n", milk_height_min1);
-	fprintf(fp, "milk_height_max_d %d\n", milk_height_max1);
+	fprintf(fp, "milk_width_min_d %d\n", milk_width_min_d);
+	fprintf(fp, "milk_width_max_d %d\n", milk_width_max_d);
+	fprintf(fp, "milk_height_min_d %d\n", milk_height_min_d);
+	fprintf(fp, "milk_height_max_d %d\n", milk_height_max_d);
 
 
 	fclose(fp);
@@ -1334,6 +1337,10 @@ void delete_outofline(int line_YN){
 						src_ROI.at<Vec3b>(i, j).val[0] = 0;
 						src_ROI.at<Vec3b>(i, j).val[1] = 0;
 						src_ROI.at<Vec3b>(i, j).val[2] = 0;
+
+						src.at<Vec3b>(i, j).val[0] = 0;
+						src.at<Vec3b>(i, j).val[1] = 0;
+						src.at<Vec3b>(i, j).val[2] = 0;
 					}
 				}
 			}
@@ -1343,6 +1350,10 @@ void delete_outofline(int line_YN){
 					src_ROI.at<Vec3b>(i, j).val[0] = 0;
 					src_ROI.at<Vec3b>(i, j).val[1] = 0;
 					src_ROI.at<Vec3b>(i, j).val[2] = 0;
+
+					src.at<Vec3b>(i, j).val[0] = 0;
+					src.at<Vec3b>(i, j).val[1] = 0;
+					src.at<Vec3b>(i, j).val[2] = 0;
 				}
 			}
 		}
