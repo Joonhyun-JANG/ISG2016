@@ -23,7 +23,7 @@ using namespace std;
 
 int fd;
 int milk_x_max=0, milk_y_max=0;
-int look_down;
+int look_down, test_mode=0;
 
 VideoCapture cap(0);
 
@@ -43,6 +43,8 @@ int saturationThres = 0;
 int lineThreshold=0, voteThreshold=80;
 int line_distance_front[270]={0,};
 
+int pt_mid=0;
+
 
 int milk_width_min=0, milk_width_max=0, milk_height_min=0, milk_height_max=0;
 int exit_status=0,input_status=0;
@@ -57,6 +59,7 @@ int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
 int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
 
 float theta_avg=0, theta_avg2=0;
+float mid_theta = 0;
 
 float fps_tmp=0;
 
@@ -132,9 +135,12 @@ int main( int argc, char** argv )
 		imshow(window_src, src);
 		src.copyTo(src_ROI);
 ///////test code start ///////////	
-		/*filter_milk_and_line();
+		if(test_mode==1){
+		filter_milk_and_line();
 		delete_outofline(detect_ball_line());
-		CannyThreshold(0, 0);*/
+		CannyThreshold(0, 0);
+
+		}
 ///////test code end   ///////////
 
 		while (serialDataAvail(fd))
@@ -197,17 +203,76 @@ int main( int argc, char** argv )
 						filter_milk_and_line();
 						if(detect_ball_line() == 1){ // line detected
 							
-				
-
-						// send degree
-						
+							
+							int degree_data=0;
+							if(-90<=mid_theta && mid_theta<-75){
+								degree_data=1;
+							}
+							else if(-75<=mid_theta && mid_theta<-65){
+								degree_data=2;
+							}
+else if(-65<=mid_theta && mid_theta<-65){
+								degree_data=3;
+							}
+else if(-55<=mid_theta && mid_theta<-45){
+								degree_data=4;
+							}
+else if(-45<=mid_theta && mid_theta<-35){
+								degree_data=5;
+							}
+else if(-35<=mid_theta && mid_theta<-25){
+								degree_data=6;
+							}
+else if(-25<=mid_theta && mid_theta<-15){
+								degree_data=7;
+							}
+else if(-15<=mid_theta && mid_theta<-5){
+								degree_data=8;
+							}
+else if(-5<=mid_theta && mid_theta<5){
+								degree_data=9;
+							}
+else if(5<=mid_theta && mid_theta<15){
+								degree_data=10;
+							}
+else if(15<=mid_theta && mid_theta<25){
+								degree_data=11;
+							}
+else if(25<=mid_theta && mid_theta<35){
+								degree_data=12;
+							}
+else if(35<=mid_theta && mid_theta<45){
+								degree_data=13;
+							}
+else if(45<=mid_theta && mid_theta<55){
+								degree_data=14;
+							}
+else if(55<=mid_theta && mid_theta<65){
+								degree_data=15;
+							}
+else if(65<=mid_theta && mid_theta<75){
+								degree_data=16;
+							}
+else if(75<=mid_theta && mid_theta<90){
+								degree_data=17;
+							}
+							// send degree
+							printf("%f (%d)\n", mid_theta, degree_data);
+							serialPutchar (fd, (unsigned char)192+degree_data); 
 						}
-						
+						else{
+							printf("Not detected\n");
+							serialPutchar (fd, (unsigned char)128); 
+						}
 						break;
 
 
 					case 99: printf("Look front\n"); 
 						look_down = 0;
+						break;
+
+					case 101: printf("Line distance : %d\n", (HEIGHT-pt_mid)/40); 
+						serialPutchar (fd, (unsigned char)(HEIGHT-pt_mid)/40); 
 						break;
 					case 105: printf("ISG19 milk_horizon(2,5)");
 						src_ROI = Scalar::all(0);
@@ -215,13 +280,13 @@ int main( int argc, char** argv )
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
-							if(80<milk_x_max/80 && milk_x_max/80<240){
+							if(80<milk_x_max && milk_x_max<240){
 								printf(" -> %3d\n", milk_finded);
-								serialPutchar (fd, (unsigned char)128+milk_finded); 	
+								serialPutchar (fd, (unsigned char)milk_finded); 	
 							}
 							else{
 								printf(" -> Not founded\n");
-								serialPutchar (fd, (unsigned char)128+0);
+								serialPutchar (fd, (unsigned char)0);
 							}
 						}
 						else{
@@ -357,6 +422,7 @@ void make_windows(){
 	namedWindow(window_Edge, CV_WINDOW_AUTOSIZE);
 	createTrackbar( "Min Threshold:", window_Edge, &lowThreshold, max_lowThreshold, ThresRefresh );
 	createTrackbar( "INPUT", window_Edge, &input_status, 1, ThresRefresh );
+	createTrackbar( "TEST", window_Edge, &test_mode, 1, ThresRefresh );
 	createTrackbar( "EXIT", window_Edge, &exit_status, 1, ThresRefresh );
 
 	// Create a "HSV window"
@@ -538,7 +604,7 @@ int detect_ball_line(){
 		int detect_line = 0;
 		int group1_cnt=0, group2_cnt=0;
 		float group1_theta[3]={999,999,999}, group2_theta[3]={999,999,999};
-		float mid_theta = 0; // real mid line
+		mid_theta = 0; // real mid line
 		int mid_theta_group = 0;
 		theta_avg = 0, theta_avg2 = 0;
 
@@ -723,7 +789,7 @@ int detect_ball_line(){
 			mid_theta = 90-(mid_theta*57.3);
 			
 			if(-5<mid_theta && mid_theta<5){
-				int pt_mid;
+				pt_mid;
 				if(mid_theta_group == 1) pt_mid = (pt1_xy+pt2_xy)/2;
 				else if(mid_theta_group == 2) pt_mid = (pt1_xy+pt2_xy)/2;
 				line(src_line, Point(160,319), Point(160,pt_mid), cv::Scalar(128,0,255), 1);
