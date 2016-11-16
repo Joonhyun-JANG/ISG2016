@@ -25,7 +25,7 @@ using namespace std;
 #define WIDTH 320
 #define HEIGHT 240
 #define PI 3.1415926
-#define ISG_no 20
+#define ISG_no 19
 
 typedef unsigned long DWORD;
 typedef unsigned long int tick32_t;
@@ -50,7 +50,7 @@ Mat src, src_gray, src_HSV, src_ROI, src_line;
 Mat src_edge, detected_edges, src_status, src_control;
 
 // for canny detect
-int edgeThresh = 1, lowThreshold, ratio = 3, kernel_size = 3;
+int edgeThresh = 1, lowThreshold, lowThreshold_d, ratio = 3, kernel_size = 3;
 int const max_lowThreshold = 300; 
 
 // for HSV converting
@@ -58,9 +58,9 @@ int lowRedThres = 0, highRedThres = 0, lowGreenThres = 0, highGreenThres = 0;
 int diffRedThres = 0, diffGreenThres = 0;
 int saturationThres = 0;
 
-int lowRedThres_D = 0, highRedThres_D = 0, lowGreenThres_D = 0, highGreenThres_D = 0;
-int diffRedThres_D = 0, diffGreenThres_D = 0;
-int saturationThres_D = 0;
+int lowRedThres_d = 0, highRedThres_d = 0, lowGreenThres_d = 0, highGreenThres_d = 0;
+int diffRedThres_d = 0, diffGreenThres_d = 0;
+int saturationThres_d = 0;
 
 
 // for line detecting
@@ -69,8 +69,12 @@ int line_distance_front[270]={0,};
 
 int pt_mid=0;
 
-
 int milk_width_min=0, milk_width_max=0, milk_height_min=0, milk_height_max=0;
+int milk_width_min3=0, milk_width_max3=0, milk_height_min3=0, milk_height_max3=0;
+int milk_width_min2=0, milk_width_max2=0, milk_height_min2=0, milk_height_max2=0;
+int milk_width_min1=0, milk_width_max1=0, milk_height_min1=0, milk_height_max1=0;
+int milk_width_min_d=0, milk_width_max_d=0, milk_height_min_d=0, milk_height_max_d=0;
+
 int exit_status=0,input_status=0;
 char window_Edge[15] = "Edge Map";
 char window_HSV[15] = "Hue based";
@@ -116,6 +120,8 @@ int main( int argc, char** argv )
 	int first_frame = 1;
 	int command_cmd=0;
 	int milk_finded_data1=0, milk_finded_data2=0;
+	int line_degree_data1=0, line_degree_data2=0;
+	int line_distance_data1=0, line_distance_data2=0;
 	look_down = 0;
 
 	if (initialize() == -1) return -1;
@@ -249,6 +255,7 @@ else if(-25<=mid_theta && mid_theta<-15){
 							}
 else if(-15<=mid_theta && mid_theta<-5){
 								degree_data=8;
+								
 							}
 else if(-5<=mid_theta && mid_theta<5){
 								degree_data=9;
@@ -295,13 +302,13 @@ else if(75<=mid_theta && mid_theta<90){
 					case 101: printf("Line distance : %d\n", (HEIGHT-pt_mid)/40); 
 						serialPutchar (fd, (unsigned char)(HEIGHT-pt_mid)/40); 
 						break;
-					case 105: printf("ISG19 milk_horizon(2,5)");
+					case 105: printf("ISG19 milk_horizon(2~17)");
 						src_ROI = Scalar::all(0);
 						filter_milk_and_line();
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
-							if(80<milk_x_max && milk_x_max<240){
+							if(80<milk_x_max && milk_x_max<240 || milk_finded==3 || milk_finded==6 || milk_finded==9 || milk_finded==12){
 								printf(" -> %3d\n", milk_finded);
 								serialPutchar (fd, (unsigned char)128+milk_finded); 	
 							}
@@ -337,8 +344,8 @@ else if(75<=mid_theta && mid_theta<90){
 						src_ROI = Scalar::all(0);
 						filter_milk_and_line();
 						CannyThreshold(0, 0);
+						int milk_finded;
 						if(milk_y_max>0 && milk_x_max>0) {
-							int milk_finded;
 							if(look_down == 0){
 								
 								if(milk_y_max>80){
@@ -347,30 +354,134 @@ else if(75<=mid_theta && mid_theta<90){
 								else{
 									milk_finded=9+(milk_x_max/107);
 								}
-								//serialPutchar (fd, (unsigned char)128+milk_finded); 
 								printf(" -> (front)");
 							}
 							else if(look_down == 1){
 								milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
-								//serialPutchar (fd, (unsigned char)128+milk_finded); 
 								printf(" -> (down)");
 							}
-							milk_finded_data1 = 128+(milk_finded & (15<<4));
+							milk_finded_data1 = 128+(((milk_finded & (15<<4)))>>4);
 							milk_finded_data2 = 192+(milk_finded & (15));
-							printf("%d // %d %d\n",milk_finded, milk_finded_data1, milk_finded_data2);
-							serialPutchar (fd, (unsigned char)milk_finded_data1);
+							printf("%d", milk_finded);
+							
 						}
 						else{
 							printf("Not founded\n");
 							src_ROI = Scalar::all(0);
-							serialPutchar (fd, (unsigned char)128+0); 
+							milk_finded_data1 = 128+0;
+							milk_finded_data2 = 192+0;
+							 
 						}
-						//printf("a");
+						printf("// %d %d\n", milk_finded_data1, milk_finded_data2);
+						serialPutchar (fd, (unsigned char)milk_finded_data1);
 						break;
 					
-					case 112: printf("milk_data_2 sended\n");
-							serialPutchar (fd, (unsigned char)milk_finded_data2);
-							break;
+					case 112: printf("milk_data_2 sended -> %d\n", milk_finded_data2);
+						serialPutchar (fd, (unsigned char)milk_finded_data2);
+						break;
+					
+					case 113: printf("find milk(30~150) "); 
+						src_ROI = Scalar::all(0);
+						filter_milk_and_line();
+						CannyThreshold(0, 0);
+						if(milk_x_max>107 && milk_x_max<214){
+							serialPutchar (fd, (unsigned char)128+1); 
+							printf(" -> yes\n");
+						}
+						else{
+							serialPutchar (fd, (unsigned char)128+0); 
+							printf(" -> no\n");
+						}	
+						break;
+
+					case 114: printf("line degree? ");
+						int distance_data;
+						filter_milk_and_line();
+						if(detect_ball_line() == 1){ // line detected	
+							int degree_data=0;
+							if(-90<=mid_theta && mid_theta<-75){
+								degree_data=1;
+							}
+							else if(-75<=mid_theta && mid_theta<-65){
+								degree_data=2;
+							}
+else if(-65<=mid_theta && mid_theta<-65){
+								degree_data=3;
+							}
+else if(-55<=mid_theta && mid_theta<-45){
+								degree_data=4;
+							}
+else if(-45<=mid_theta && mid_theta<-35){
+								degree_data=5;
+							}
+else if(-35<=mid_theta && mid_theta<-25){
+								degree_data=6;
+							}
+else if(-25<=mid_theta && mid_theta<-15){
+								degree_data=7;
+							}
+else if(-15<=mid_theta && mid_theta<-5){
+								degree_data=8;
+							}
+else if(-5<=mid_theta && mid_theta<5){
+								degree_data=9;
+								distance_data = 192+((pt_mid)/40);
+								line_distance_data1=128+32+((distance_data&(15<<4)>>4)); 
+								line_distance_data2=192+32+(distance_data&(15));
+							}
+else if(5<=mid_theta && mid_theta<15){
+								degree_data=10;
+							}
+else if(15<=mid_theta && mid_theta<25){
+								degree_data=11;
+							}
+else if(25<=mid_theta && mid_theta<35){
+								degree_data=12;
+							}
+else if(35<=mid_theta && mid_theta<45){
+								degree_data=13;
+							}
+else if(45<=mid_theta && mid_theta<55){
+								degree_data=14;
+							}
+else if(55<=mid_theta && mid_theta<65){
+								degree_data=15;
+							}
+else if(65<=mid_theta && mid_theta<75){
+								degree_data=16;
+							}
+else if(75<=mid_theta && mid_theta<90){
+								degree_data=17;
+							}
+							// send degree
+							
+							degree_data += 192;
+							line_degree_data1=128+32+((degree_data&(15<<4))>>4);
+							line_degree_data2=192+32+(degree_data&(15));
+							printf("%f (%d) // %d %d\n", mid_theta, degree_data-192, line_degree_data1, line_degree_data2);
+							serialPutchar (fd, (unsigned char)line_degree_data1); 
+
+						}
+						else{
+							printf("Not detected\n");
+							line_degree_data1=128+32+0;
+							line_degree_data2=192+32+0;
+							serialPutchar (fd, (unsigned char)line_degree_data1); 
+						}
+						break;
+
+					case 115: printf("degree_data_2 sended -> %d\n", line_degree_data2);
+						serialPutchar (fd, (unsigned char)milk_finded_data2);
+						break;
+						
+
+					case 116: printf("distance_data_1 sended -> %d\n", line_distance_data1);
+						serialPutchar (fd, (unsigned char)line_distance_data1);
+						break;
+					case 117: printf("degree_data_2 sended -> %d\n", line_distance_data2);
+						serialPutchar (fd, (unsigned char)line_distance_data2);
+						break;
+
 					default: printf("\n"); break;
 				}
 				fflush (stdout) ;
@@ -515,34 +626,34 @@ void make_windows(){
 	createTrackbar("Green Max(front):", control_HSV, &highGreenThres, 255, ThresRefresh);
 	createTrackbar("Green Diff(front):", control_HSV, &diffGreenThres, 255, ThresRefresh);	
 	createTrackbar("Saturation Diff(front) :", control_HSV, &saturationThres, 255, ThresRefresh);	
-	createTrackbar("Red Min(down):", control_HSV, &lowRedThres, 255, ThresRefresh);
-	createTrackbar("Red Max(down):", control_HSV, &highRedThres, 255, ThresRefresh);
-	createTrackbar("Red Diff(down):", control_HSV, &diffRedThres, 255, ThresRefresh);
-	createTrackbar("Green Min(down):", control_HSV, &lowGreenThres, 255, ThresRefresh);
-	createTrackbar("Green Max(down):", control_HSV, &highGreenThres, 255, ThresRefresh);
-	createTrackbar("Green Diff(down):", control_HSV, &diffGreenThres, 255, ThresRefresh);	
-	createTrackbar("Saturation Diff(down):", control_HSV, &saturationThres, 255, ThresRefresh);	
+	createTrackbar("Red Min(down):", control_HSV, &lowRedThres_d, 255, ThresRefresh);
+	createTrackbar("Red Max(down):", control_HSV, &highRedThres_d, 255, ThresRefresh);
+	createTrackbar("Red Diff(down):", control_HSV, &diffRedThres_d, 255, ThresRefresh);
+	createTrackbar("Green Min(down):", control_HSV, &lowGreenThres_d, 255, ThresRefresh);
+	createTrackbar("Green Max(down):", control_HSV, &highGreenThres_d, 255, ThresRefresh);
+	createTrackbar("Green Diff(down):", control_HSV, &diffGreenThres_d, 255, ThresRefresh);	
+	createTrackbar("Saturation Diff(down):", control_HSV, &saturationThres_d, 255, ThresRefresh);	
 
 	// Create a "milk control"
 	namedWindow(control_milk, CV_WINDOW_AUTOSIZE);
 	moveWindow(control_milk, 1201, 50);
-	createTrackbar("width_min3:", control_milk, &milk_width_min, 320, ThresRefresh);
-	createTrackbar("width_max3:", control_milk, &milk_width_max, 320, ThresRefresh);
-	createTrackbar("height_min3:", control_milk, &milk_height_min, 240, ThresRefresh);
-	createTrackbar("height_max3:", control_milk, &milk_height_max, 240, ThresRefresh);
+	createTrackbar("width_min3:", control_milk, &milk_width_min3, 320, ThresRefresh);
+	createTrackbar("width_max3:", control_milk, &milk_width_max3, 320, ThresRefresh);
+	createTrackbar("height_min3:", control_milk, &milk_height_min3, 240, ThresRefresh);
+	createTrackbar("height_max3:", control_milk, &milk_height_max3, 240, ThresRefresh);
 	
-	createTrackbar("width_min2:", control_milk, &milk_width_min, 320, ThresRefresh);
-	createTrackbar("width_max2:", control_milk, &milk_width_max, 320, ThresRefresh);
-	createTrackbar("height_min2:", control_milk, &milk_height_min, 240, ThresRefresh);
-	createTrackbar("height_max2:", control_milk, &milk_height_max, 240, ThresRefresh);
+	createTrackbar("width_min2:", control_milk, &milk_width_min2, 320, ThresRefresh);
+	createTrackbar("width_max2:", control_milk, &milk_width_max2, 320, ThresRefresh);
+	createTrackbar("height_min2:", control_milk, &milk_height_min2, 240, ThresRefresh);
+	createTrackbar("height_max2:", control_milk, &milk_height_max2, 240, ThresRefresh);
 	
-	createTrackbar("width_min1:", control_milk, &milk_width_min, 320, ThresRefresh);
-	createTrackbar("width_max1:", control_milk, &milk_width_max, 320, ThresRefresh);
-	createTrackbar("height_min1:", control_milk, &milk_height_min, 240, ThresRefresh);
-	createTrackbar("height_max1:", control_milk, &milk_height_max, 240, ThresRefresh);
+	createTrackbar("width_min1:", control_milk, &milk_width_min1, 320, ThresRefresh);
+	createTrackbar("width_max1:", control_milk, &milk_width_max1, 320, ThresRefresh);
+	createTrackbar("height_min1:", control_milk, &milk_height_min1, 240, ThresRefresh);
+	createTrackbar("height_max1:", control_milk, &milk_height_max1, 240, ThresRefresh);
 
 	createTrackbar("Edge Min(front):", control_milk, &lowThreshold, max_lowThreshold, ThresRefresh );
-	createTrackbar("Edge Min(down):", control_milk, &lowThreshold, max_lowThreshold, ThresRefresh );
+	createTrackbar("Edge Min(down):", control_milk, &lowThreshold_d, max_lowThreshold, ThresRefresh );
 
 
 	// Create a "line control"
@@ -661,8 +772,34 @@ void CannyThreshold(int, void*)
 
 	milk_x_max=0, milk_y_max=0;
 	for(int i = 0; i<contours.size(); i++){
+		int milk_y_mid=0, milk_y_mid_index=0;
 		approxPolyDP(Mat(contours[i]), contours_poly[i], 1, true);
 		boundRect[i] = boundingRect(Mat(contours_poly[i]));
+		milk_y_mid=(boundRect[i].br().y+boundRect[i].tl().y)/2;
+		if(0<=milk_y_mid && milk_y_mid<80){
+			milk_height_min = milk_height_min3;
+			milk_height_max = milk_height_max3;
+			milk_width_min = milk_width_min3;
+			milk_width_max = milk_width_max3;
+			milk_y_mid_index = 3;
+		}
+
+		else if(80<=milk_y_mid && milk_y_mid<160){
+			milk_height_min = milk_height_min2;
+			milk_height_max = milk_height_max2;
+			milk_width_min = milk_width_min2;
+			milk_width_max = milk_width_max2;
+			milk_y_mid_index = 2;
+		}
+
+		else if(160<=milk_y_mid && milk_y_mid<240){
+			milk_height_min = milk_height_min1;
+			milk_height_max = milk_height_max1;
+			milk_width_min = milk_width_min1;
+			milk_width_max = milk_width_max1;
+			milk_y_mid_index = 1;
+		}
+
 		if(boundRect[i].height > milk_height_min && boundRect[i].height < milk_height_max && boundRect[i].width > milk_width_min && boundRect[i].width < milk_width_max){
 			int milk_G_cnt=0;
 			for(int k=boundRect[i].tl().y; k<boundRect[i].br().y; k++){
@@ -677,11 +814,22 @@ void CannyThreshold(int, void*)
 					milk_y_max = boundRect[i].br().y;
 					milk_x_max = (boundRect[i].tl().x+boundRect[i].br().x)/2;
 				}
-				rectangle(src_ROI, boundRect[i].tl(), boundRect[i].br(), Scalar(128,0,128), 1, 8, 0);
+				
 				stringstream ss_milk;
 				ss_milk << boundRect[i].br().x-boundRect[i].tl().x << " " << boundRect[i].br().y-boundRect[i].tl().y;	
 				string str_milk = ss_milk.str();
-				putText(src_ROI, str_milk, boundRect[i].tl(), FONT_HERSHEY_PLAIN, 0.7, Scalar(128, 0, 255), 1, 8, false);
+				if(milk_y_mid_index==3){
+					putText(src_ROI, str_milk, boundRect[i].tl(), FONT_HERSHEY_PLAIN, 0.7, Scalar(128,0,128), 1, 8, false);
+					rectangle(src_ROI, boundRect[i].tl(), boundRect[i].br(), Scalar(128,0,128), 1, 8, 0);
+				}
+				else if(milk_y_mid_index==2){
+					putText(src_ROI, str_milk, boundRect[i].tl(), FONT_HERSHEY_PLAIN, 0.7, Scalar(128,128,0), 1, 8, false);
+					rectangle(src_ROI, boundRect[i].tl(), boundRect[i].br(), Scalar(128,128,0), 1, 8, 0);
+				}
+				else if(milk_y_mid_index==1){
+					putText(src_ROI, str_milk, boundRect[i].tl(), FONT_HERSHEY_PLAIN, 0.7, Scalar(0,128,128), 1, 8, false);
+					rectangle(src_ROI, boundRect[i].tl(), boundRect[i].br(), Scalar(0,128,128), 1, 8, 0);
+				}
 			}
 		}
 		
@@ -955,17 +1103,36 @@ void load_settings() {
 	fscanf(fp, "%s %d", tmp, &lowRedThres);
 	fscanf(fp, "%s %d", tmp, &highRedThres);
 	fscanf(fp, "%s %d", tmp, &diffRedThres);
-
 	fscanf(fp, "%s %d", tmp, &lowGreenThres);
 	fscanf(fp, "%s %d", tmp, &highGreenThres);
 	fscanf(fp, "%s %d", tmp, &diffGreenThres);
+	fscanf(fp, "%s %d", tmp, &saturationThres);
+	
+	fscanf(fp, "%s %d", tmp, &lowRedThres_d);
+	fscanf(fp, "%s %d", tmp, &highRedThres_d);
+	fscanf(fp, "%s %d", tmp, &diffRedThres_d);
+	fscanf(fp, "%s %d", tmp, &lowGreenThres_d);
+	fscanf(fp, "%s %d", tmp, &highGreenThres_d);
+	fscanf(fp, "%s %d", tmp, &diffGreenThres_d);
+	fscanf(fp, "%s %d", tmp, &saturationThres_d);
 
+	fscanf(fp, "%s %d", tmp, &milk_width_min3);
+	fscanf(fp, "%s %d", tmp, &milk_width_max3);
+	fscanf(fp, "%s %d", tmp, &milk_height_min3);
+	fscanf(fp, "%s %d", tmp, &milk_height_max3);
+	fscanf(fp, "%s %d", tmp, &milk_width_min2);
+	fscanf(fp, "%s %d", tmp, &milk_width_max2);
+	fscanf(fp, "%s %d", tmp, &milk_height_min2);
+	fscanf(fp, "%s %d", tmp, &milk_height_max2);
+	fscanf(fp, "%s %d", tmp, &milk_width_min1);
+	fscanf(fp, "%s %d", tmp, &milk_width_max1);
+	fscanf(fp, "%s %d", tmp, &milk_height_min1);
+	fscanf(fp, "%s %d", tmp, &milk_height_max1);
+	
 	fscanf(fp, "%s %d", tmp, &lowThreshold);
+	fscanf(fp, "%s %d", tmp, &lowThreshold_d);
 
-	fscanf(fp, "%s %d", tmp, &milk_width_min);
-	fscanf(fp, "%s %d", tmp, &milk_width_max);
-	fscanf(fp, "%s %d", tmp, &milk_height_min);
-	fscanf(fp, "%s %d", tmp, &milk_height_max);
+	
 
 	fclose(fp);
 
@@ -988,13 +1155,32 @@ void save_settings() {
 	fprintf(fp, "diffGreenThres %d\n", diffGreenThres);
 	fprintf(fp, "diffSaturationThres %d\n", saturationThres);
 
+	fprintf(fp, "lowRedThres_d %d\n", lowRedThres_d);
+	fprintf(fp, "highRedThres_d %d\n", highRedThres_d);
+	fprintf(fp, "diffRedThres_d %d\n", diffRedThres_d);
+	fprintf(fp, "lowGreenThres_d %d\n", lowGreenThres_d);
+	fprintf(fp, "highGreenThres_d %d\n", highGreenThres_d);
+	fprintf(fp, "diffGreenThres_d %d\n", diffGreenThres_d);
+	fprintf(fp, "diffSaturationThres_d %d\n", saturationThres_d);
+
+	fprintf(fp, "milk_width_min3 %d\n", milk_width_min1);
+	fprintf(fp, "milk_width_max3 %d\n", milk_width_max1);
+	fprintf(fp, "milk_height_min3 %d\n", milk_height_min1);
+	fprintf(fp, "milk_height_max3 %d\n", milk_height_max1);
+
+	fprintf(fp, "milk_width_min2 %d\n", milk_width_min1);
+	fprintf(fp, "milk_width_max2 %d\n", milk_width_max1);
+	fprintf(fp, "milk_height_min2 %d\n", milk_height_min1);
+	fprintf(fp, "milk_height_max2 %d\n", milk_height_max1);
+
+	fprintf(fp, "milk_width_min1 %d\n", milk_width_min1);
+	fprintf(fp, "milk_width_max1 %d\n", milk_width_max1);
+	fprintf(fp, "milk_height_min1 %d\n", milk_height_min1);
+	fprintf(fp, "milk_height_max1 %d\n", milk_height_max1);
 
 	fprintf(fp, "lowThreshold %d\n", lowThreshold);
-
-	fprintf(fp, "milk_width_min %d\n", milk_width_min);
-	fprintf(fp, "milk_width_max %d\n", milk_width_max);
-	fprintf(fp, "milk_height_min %d\n", milk_height_min);
-	fprintf(fp, "milk_height_max %d\n", milk_height_max);
+	fprintf(fp, "lowThreshold_d %d\n", lowThreshold_d);
+	
 
 	fclose(fp);
 }
