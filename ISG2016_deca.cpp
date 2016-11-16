@@ -19,7 +19,26 @@
 using namespace cv;
 using namespace std;
 
-////// Global variables start //////
+
+////// Global variables start//////
+
+#define WIDTH 320
+#define HEIGHT 240
+#define PI 3.1415926
+#define ISG_no 19
+
+typedef unsigned long DWORD;
+typedef unsigned long int tick32_t;
+
+static DWORD lastTime = 0;
+tick32_t get_tick_count(){\
+	tick32_t tick=0ul;
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	tick = (tp.tv_sec*1000ul) + (tp.tv_nsec/1000ul/1000ul);
+	return tick;
+}
+
 
 int fd;
 int milk_x_max=0, milk_y_max=0;
@@ -28,7 +47,7 @@ int look_down, test_mode=0;
 VideoCapture cap(0);
 
 Mat src, src_gray, src_HSV, src_ROI, src_line;
-Mat src_edge, detected_edges, src_status;
+Mat src_edge, detected_edges, src_status, src_control;
 
 // for canny detect
 int edgeThresh = 1, lowThreshold, ratio = 3, kernel_size = 3;
@@ -38,6 +57,11 @@ int const max_lowThreshold = 300;
 int lowRedThres = 0, highRedThres = 0, lowGreenThres = 0, highGreenThres = 0;
 int diffRedThres = 0, diffGreenThres = 0;
 int saturationThres = 0;
+
+int lowRedThres_D = 0, highRedThres_D = 0, lowGreenThres_D = 0, highGreenThres_D = 0;
+int diffRedThres_D = 0, diffGreenThres_D = 0;
+int saturationThres_D = 0;
+
 
 // for line detecting
 int lineThreshold=0, voteThreshold=80;
@@ -54,6 +78,10 @@ char window_ROI[15] = "ROI";
 char window_Line[15] = "line find";
 char window_src[15] = "Original";
 char window_status[15] = "STATUS";
+char control_HSV[15] = "HSV Adjust";
+char control_milk[15] = "milk Adjust";
+char control_master[15] = "MASTER";
+char control_line[15] = "line Adjust";
 
 int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
 int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
@@ -66,23 +94,6 @@ float fps_tmp=0;
 FILE *fp;
 
 ////// Global variables end //////
-
-#define WIDTH 320
-#define HEIGHT 240
-#define PI 3.1415926
-
-typedef unsigned long DWORD;
-typedef unsigned long int tick32_t;
-
-static DWORD lastTime = 0;
-tick32_t get_tick_count(){\
-	tick32_t tick=0ul;
-	struct timespec tp;
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	tick = (tp.tv_sec*1000ul) + (tp.tv_nsec/1000ul/1000ul);
-	return tick;
-}
-
 
 
 ////// functions definition //////
@@ -104,6 +115,7 @@ int main( int argc, char** argv )
 {
 	int first_frame = 1;
 	int command_cmd=0;
+	int milk_finded_data1=0, milk_finded_data2=0;
 	look_down = 0;
 
 	if (initialize() == -1) return -1;
@@ -127,6 +139,16 @@ int main( int argc, char** argv )
 			src_ROI.create( src.size(), src.type() );
 			src_HSV.create( src.size(), src.type() );
 			src_status.create( src.size(), src.type() );
+			if(ISG_no==19){
+				src_control = imread("ISG19.png");
+			}
+			else if(ISG_no==20){
+				src_control = imread("ISG20.png");
+			}
+			imshow(control_HSV, src_control);
+			imshow(control_milk, src_control);
+			imshow(control_master, src_control);
+			imshow(control_line, src_control);
 			first_frame = 0;
 		}
 
@@ -136,10 +158,9 @@ int main( int argc, char** argv )
 		src.copyTo(src_ROI);
 ///////test code start ///////////	
 		if(test_mode==1){
-		filter_milk_and_line();
-		delete_outofline(detect_ball_line());
-		CannyThreshold(0, 0);
-
+			filter_milk_and_line();
+			delete_outofline(detect_ball_line());
+			CannyThreshold(0, 0);
 		}
 ///////test code end   ///////////
 
@@ -158,11 +179,11 @@ int main( int argc, char** argv )
 						filter_milk_and_line();
 						CannyThreshold(0, 0);
 						if(milk_x_max>107 && milk_x_max<214){
-							serialPutchar (fd, (unsigned char)1); 
+							serialPutchar (fd, (unsigned char)128+1); 
 							printf(" -> yes\n");
 						}
 						else{
-							serialPutchar (fd, (unsigned char)0); 
+							serialPutchar (fd, (unsigned char)128+0); 
 							printf(" -> no\n");
 						}	
 						break;
@@ -179,19 +200,19 @@ int main( int argc, char** argv )
 								else{
 									milk_finded=9+(milk_x_max/107);
 								}
-								serialPutchar (fd, (unsigned char)milk_finded); 
+								serialPutchar (fd, (unsigned char)128+milk_finded); 
 								printf(" -> %3d(front)\n", milk_finded);
 							}
 							else if(look_down == 1){
 								int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
-								serialPutchar (fd, (unsigned char)milk_finded); 
+								serialPutchar (fd, (unsigned char)128+milk_finded); 
 								printf(" -> %3d(down)\n", milk_finded);
 							}
 						}
 						else{
 							printf("Not founded\n");
 							src_ROI = Scalar::all(0);
-							serialPutchar (fd, (unsigned char)0); 
+							serialPutchar (fd, (unsigned char)128+0); 
 						}
 						//printf("a");
 						break;
@@ -282,16 +303,16 @@ else if(75<=mid_theta && mid_theta<90){
 							int milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
 							if(80<milk_x_max && milk_x_max<240){
 								printf(" -> %3d\n", milk_finded);
-								serialPutchar (fd, (unsigned char)milk_finded); 	
+								serialPutchar (fd, (unsigned char)128+milk_finded); 	
 							}
 							else{
 								printf(" -> Not founded\n");
-								serialPutchar (fd, (unsigned char)0);
+								serialPutchar (fd, (unsigned char)128+0);
 							}
 						}
 						else{
 								printf(" -> Not founded\n");
-								serialPutchar (fd, (unsigned char)0);
+								serialPutchar (fd, (unsigned char)128+0);
 						}
 						look_down = 1;
 						break; 
@@ -302,15 +323,55 @@ else if(75<=mid_theta && mid_theta<90){
 						CannyThreshold(0, 0);
 						if(milk_y_max>0 && milk_x_max>0) {
 							printf(" -> %3d\n", 6-(int)(milk_y_max/40));
-							serialPutchar (fd, (unsigned char)6-(int)(milk_y_max/40));
+							serialPutchar (fd, 128+(unsigned char)6-(int)(milk_y_max/40));
 						}
 						else{
 							printf(" -> Not founded\n");
-							serialPutchar (fd, (unsigned char)0); 
+							serialPutchar (fd, (unsigned char)128+0); 
 							src_ROI = Scalar::all(0);
 						}
 						look_down = 1;
 						break; 
+				
+					case 111: printf("Where is milk? "); 
+						src_ROI = Scalar::all(0);
+						filter_milk_and_line();
+						CannyThreshold(0, 0);
+						if(milk_y_max>0 && milk_x_max>0) {
+							int milk_finded;
+							if(look_down == 0){
+								
+								if(milk_y_max>80){
+									milk_finded=milk_map_front[milk_y_max/80][milk_x_max/80];
+								}
+								else{
+									milk_finded=9+(milk_x_max/107);
+								}
+								//serialPutchar (fd, (unsigned char)128+milk_finded); 
+								printf(" -> %3d(front)");
+							}
+							else if(look_down == 1){
+								milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
+								//serialPutchar (fd, (unsigned char)128+milk_finded); 
+								printf(" -> %3d(down)");
+							}
+							milk_finded_data1 = 128+milk_finded & (1111<<4);
+							milk_finded_data2 = 192+milk_finded & (1111);
+							printf("%d // %d %d\n",milk_finded, milk_finded_data1, milk_finded_data2);
+							serialPutchar (fd, (unsigned char)milk_finded_data1);
+						}
+						else{
+							printf("Not founded\n");
+							src_ROI = Scalar::all(0);
+							serialPutchar (fd, (unsigned char)128+0); 
+						}
+						//printf("a");
+						break;
+					
+					case 112: printf("milk_data_2 sended\n");
+							serialPutchar (fd, (unsigned char)milk_finded_data2);
+							break;
+					default: printf("\n"); break;
 				}
 				fflush (stdout) ;
 		}
@@ -418,46 +479,94 @@ int initialize() {
 }
 
 void make_windows(){
-	// Create a "Edge window"
-	namedWindow(window_Edge, CV_WINDOW_AUTOSIZE);
-	createTrackbar( "Min Threshold:", window_Edge, &lowThreshold, max_lowThreshold, ThresRefresh );
-	createTrackbar( "INPUT", window_Edge, &input_status, 1, ThresRefresh );
-	createTrackbar( "TEST", window_Edge, &test_mode, 1, ThresRefresh );
-	createTrackbar( "EXIT", window_Edge, &exit_status, 1, ThresRefresh );
 
-	// Create a "HSV window"
+	// Create a "1.HSV window"
 	namedWindow(window_HSV, CV_WINDOW_AUTOSIZE);
-	createTrackbar("Red Min:", window_HSV, &lowRedThres, 255, ThresRefresh);
-	createTrackbar("Red Max:", window_HSV, &highRedThres, 255, ThresRefresh);
-	createTrackbar("Red Diff:", window_HSV, &diffRedThres, 255, ThresRefresh);
-	createTrackbar("Green Min:", window_HSV, &lowGreenThres, 255, ThresRefresh);
-	createTrackbar("Green Max:", window_HSV, &highGreenThres, 255, ThresRefresh);
-	createTrackbar("Green Diff:", window_HSV, &diffGreenThres, 255, ThresRefresh);	
-	createTrackbar("S Diff:", window_HSV, &saturationThres, 255, ThresRefresh);	
+	moveWindow(window_HSV, 0, 50);
 
-	// Create a "ROI window"
-	namedWindow(window_ROI, CV_WINDOW_AUTOSIZE);
-	createTrackbar("width_min:", window_ROI, &milk_width_min, 320, ThresRefresh);
-	createTrackbar("width_max:", window_ROI, &milk_width_max, 320, ThresRefresh);
-	createTrackbar("height_min:", window_ROI, &milk_height_min, 240, ThresRefresh);
-	createTrackbar("height_max:", window_ROI, &milk_height_max, 240, ThresRefresh);
-	
-	createTrackbar("width_min2:", window_ROI, &milk_width_min, 320, ThresRefresh);
-	createTrackbar("width_max2:", window_ROI, &milk_width_max, 320, ThresRefresh);
-	createTrackbar("height_min2:", window_ROI, &milk_height_min, 240, ThresRefresh);
-	createTrackbar("height_max2:", window_ROI, &milk_height_max, 240, ThresRefresh);
-	
-	createTrackbar("width_min3:", window_ROI, &milk_width_min, 320, ThresRefresh);
-	createTrackbar("width_max3:", window_ROI, &milk_width_max, 320, ThresRefresh);
-	createTrackbar("height_min3:", window_ROI, &milk_height_min, 240, ThresRefresh);
-	createTrackbar("height_max3:", window_ROI, &milk_height_max, 240, ThresRefresh);
-
-	// Create a "Line window"
-	namedWindow(window_Line, CV_WINDOW_AUTOSIZE);
-	createTrackbar("line_thres:", window_Line, &lineThreshold, 320, ThresRefresh);
-	createTrackbar("vote_thres:", window_Line, &voteThreshold, 320, ThresRefresh);
-
+	// Create a "2.Original window"
 	namedWindow(window_src, CV_WINDOW_AUTOSIZE);
+	moveWindow(window_src, 320, 50);
+
+	// Create a "3.Edge window"
+	namedWindow(window_Edge, CV_WINDOW_AUTOSIZE);
+	moveWindow(window_Edge, 640, 50);
+
+	// Create a "4.STATUS window"
+	namedWindow(window_status, CV_WINDOW_AUTOSIZE);
+	moveWindow(window_status, 0, 320);
+
+	// Create a "5.ROI window"
+	namedWindow(window_ROI, CV_WINDOW_AUTOSIZE);
+	moveWindow(window_ROI, 320, 320);
+
+	// Create a "6.Line window"
+	namedWindow(window_Line, CV_WINDOW_AUTOSIZE);
+	moveWindow(window_Line, 640, 320);
+
+
+	// Create a "HSV control"
+	namedWindow(control_HSV, CV_WINDOW_AUTOSIZE);
+	moveWindow(control_HSV, 960, 50);
+	createTrackbar("Red Min(front):", control_HSV, &lowRedThres, 255, ThresRefresh);
+	createTrackbar("Red Max(front):", control_HSV, &highRedThres, 255, ThresRefresh);
+	createTrackbar("Red Diff(front):", control_HSV, &diffRedThres, 255, ThresRefresh);
+	createTrackbar("Green Min(front):", control_HSV, &lowGreenThres, 255, ThresRefresh);
+	createTrackbar("Green Max(front):", control_HSV, &highGreenThres, 255, ThresRefresh);
+	createTrackbar("Green Diff(front):", control_HSV, &diffGreenThres, 255, ThresRefresh);	
+	createTrackbar("Saturation Diff(front) :", control_HSV, &saturationThres, 255, ThresRefresh);	
+	createTrackbar("Red Min(down):", control_HSV, &lowRedThres, 255, ThresRefresh);
+	createTrackbar("Red Max(down):", control_HSV, &highRedThres, 255, ThresRefresh);
+	createTrackbar("Red Diff(down):", control_HSV, &diffRedThres, 255, ThresRefresh);
+	createTrackbar("Green Min(down):", control_HSV, &lowGreenThres, 255, ThresRefresh);
+	createTrackbar("Green Max(down):", control_HSV, &highGreenThres, 255, ThresRefresh);
+	createTrackbar("Green Diff(down):", control_HSV, &diffGreenThres, 255, ThresRefresh);	
+	createTrackbar("Saturation Diff(down):", control_HSV, &saturationThres, 255, ThresRefresh);	
+
+	// Create a "milk control"
+	namedWindow(control_milk, CV_WINDOW_AUTOSIZE);
+	moveWindow(control_milk, 1201, 50);
+	createTrackbar("width_min3:", control_milk, &milk_width_min, 320, ThresRefresh);
+	createTrackbar("width_max3:", control_milk, &milk_width_max, 320, ThresRefresh);
+	createTrackbar("height_min3:", control_milk, &milk_height_min, 240, ThresRefresh);
+	createTrackbar("height_max3:", control_milk, &milk_height_max, 240, ThresRefresh);
+	
+	createTrackbar("width_min2:", control_milk, &milk_width_min, 320, ThresRefresh);
+	createTrackbar("width_max2:", control_milk, &milk_width_max, 320, ThresRefresh);
+	createTrackbar("height_min2:", control_milk, &milk_height_min, 240, ThresRefresh);
+	createTrackbar("height_max2:", control_milk, &milk_height_max, 240, ThresRefresh);
+	
+	createTrackbar("width_min1:", control_milk, &milk_width_min, 320, ThresRefresh);
+	createTrackbar("width_max1:", control_milk, &milk_width_max, 320, ThresRefresh);
+	createTrackbar("height_min1:", control_milk, &milk_height_min, 240, ThresRefresh);
+	createTrackbar("height_max1:", control_milk, &milk_height_max, 240, ThresRefresh);
+
+	createTrackbar("Edge Min(front):", control_milk, &lowThreshold, max_lowThreshold, ThresRefresh );
+	createTrackbar("Edge Min(down):", control_milk, &lowThreshold, max_lowThreshold, ThresRefresh );
+
+
+	// Create a "line control"
+	namedWindow(control_line, CV_WINDOW_AUTOSIZE);
+	moveWindow(control_line, 1441, 400);
+	createTrackbar("line_thres:", control_line, &lineThreshold, 320, ThresRefresh);
+	createTrackbar("vote_thres:", control_line, &voteThreshold, 320, ThresRefresh);
+	createTrackbar("line_thres:2", control_line, &lineThreshold, 320, ThresRefresh);
+	createTrackbar("vote_thres:2", control_line, &voteThreshold, 320, ThresRefresh);
+	createTrackbar("width_min(down):", control_line, &lineThreshold, 320, ThresRefresh);
+	createTrackbar("width_max(down):", control_line, &voteThreshold, 320, ThresRefresh);
+	createTrackbar("height_min(down):", control_line, &lineThreshold, 320, ThresRefresh);
+	createTrackbar("height_max(down):", control_line, &voteThreshold, 320, ThresRefresh);
+
+
+	// Create a "master control"
+	namedWindow(control_master, CV_WINDOW_AUTOSIZE);
+	moveWindow(control_master, 718, 660);
+	createTrackbar( "INPUT", control_master, &input_status, 1, ThresRefresh );
+	createTrackbar( "TEST", control_master, &test_mode, 1, ThresRefresh );
+	createTrackbar( "LOOK DOWN", control_master, &test_mode, 1, ThresRefresh );
+	createTrackbar( "EXIT", control_master, &exit_status, 1, ThresRefresh );
+
+
 }
 
 void ThresRefresh(int, void*){
@@ -825,7 +934,7 @@ int detect_ball_line(){
 	    cvtColor(src_ball, src_ball_gray, COLOR_BGR2GRAY );
 		
 		// Reduce the noise so we avoid false circle detection
-	    GaussianBlur(src_ball_gray, src_ball_gray, Size(9, 9), 2, 2 );
+  	    GaussianBlur(src_ball_gray, src_ball_gray, Size(9, 9), 2, 2 );
 		
 		cannyThreshold = std::max(cannyThreshold, 1);
         accumulatorThreshold = std::max(accumulatorThreshold, 1);
@@ -874,10 +983,11 @@ void save_settings() {
 	fprintf(fp, "lowRedThres %d\n", lowRedThres);
 	fprintf(fp, "highRedThres %d\n", highRedThres);
 	fprintf(fp, "diffRedThres %d\n", diffRedThres);
-
 	fprintf(fp, "lowGreenThres %d\n", lowGreenThres);
 	fprintf(fp, "highGreenThres %d\n", highGreenThres);
 	fprintf(fp, "diffGreenThres %d\n", diffGreenThres);
+	fprintf(fp, "diffSaturationThres %d\n", saturationThres);
+
 
 	fprintf(fp, "lowThreshold %d\n", lowThreshold);
 
