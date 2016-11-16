@@ -25,7 +25,7 @@ using namespace std;
 #define WIDTH 320
 #define HEIGHT 240
 #define PI 3.1415926
-#define ISG_no 19
+#define ISG_no 20
 
 typedef unsigned long DWORD;
 typedef unsigned long int tick32_t;
@@ -50,7 +50,7 @@ Mat src, src_gray, src_HSV, src_ROI, src_line;
 Mat src_edge, detected_edges, src_status, src_control;
 
 // for canny detect
-int edgeThresh = 1, lowThreshold, lowThreshold_d, ratio = 3, kernel_size = 3;
+int edgeThresh = 1, lowThreshold, lowThreshold_d, lowThreshold_tmp, ratio = 3, kernel_size = 3;
 int const max_lowThreshold = 300; 
 
 // for HSV converting
@@ -62,9 +62,12 @@ int lowRedThres_d = 0, highRedThres_d = 0, lowGreenThres_d = 0, highGreenThres_d
 int diffRedThres_d = 0, diffGreenThres_d = 0;
 int saturationThres_d = 0;
 
+int lowRedThres_tmp = 0, highRedThres_tmp = 0, lowGreenThres_tmp = 0, highGreenThres_tmp = 0;
+int diffRedThres_tmp = 0, diffGreenThres_tmp = 0;
+int saturationThres_tmp = 0;
 
 // for line detecting
-int lineThreshold=0, voteThreshold=80;
+int lineThreshold=0, voteThreshold=80, lineThreshold_d=0, voteThreshold_d=80, lineThreshold_tmp=0, voteThreshold_tmp=80;
 int line_distance_front[270]={0,};
 
 int pt_mid=0;
@@ -122,7 +125,9 @@ int main( int argc, char** argv )
 	int milk_finded_data1=0, milk_finded_data2=0;
 	int line_degree_data1=0, line_degree_data2=0;
 	int line_distance_data1=0, line_distance_data2=0;
-	look_down = 0;
+	int distance_data=0;
+
+	look_down = 1;
 
 	if (initialize() == -1) return -1;
 	load_settings();
@@ -131,7 +136,27 @@ int main( int argc, char** argv )
 	lastTime = get_tick_count();
 
 	while(1){
-		
+		if(look_down==0){
+			lowRedThres_tmp = lowRedThres; highRedThres_tmp = highRedThres; 
+			lowGreenThres_tmp = lowGreenThres; highGreenThres_tmp = highGreenThres;
+			diffRedThres_tmp = diffRedThres; diffGreenThres_tmp = diffGreenThres;
+			saturationThres_tmp = saturationThres;
+
+			lowThreshold_tmp = lowThreshold;
+
+			lineThreshold_tmp = lineThreshold;
+			voteThreshold_tmp = voteThreshold;
+
+		}
+		else if(look_down==1){
+			lowRedThres_tmp = lowRedThres_d; highRedThres_tmp = highRedThres_d; 
+			lowGreenThres_tmp = lowGreenThres_d; highGreenThres_tmp = highGreenThres_d;
+			diffRedThres_tmp = diffRedThres_d; diffGreenThres_tmp = diffGreenThres_d;
+			saturationThres_tmp = saturationThres_d;
+
+			lowThreshold_tmp = lowThreshold_d;
+			voteThreshold_tmp = voteThreshold_d;
+		}
 		if(command_cmd>9999) command_cmd=0;
 		bool bSuccess = cap.read(src);
 		if (!bSuccess)
@@ -395,7 +420,6 @@ else if(75<=mid_theta && mid_theta<90){
 						break;
 
 					case 114: printf("line degree? ");
-						int distance_data;
 						filter_milk_and_line();
 						if(detect_ball_line() == 1){ // line detected	
 							int degree_data=0;
@@ -471,7 +495,7 @@ else if(75<=mid_theta && mid_theta<90){
 						break;
 
 					case 115: printf("degree_data_2 sended -> %d\n", line_degree_data2);
-						serialPutchar (fd, (unsigned char)milk_finded_data2);
+						serialPutchar (fd, (unsigned char)line_degree_data2);
 						break;
 						
 
@@ -481,6 +505,80 @@ else if(75<=mid_theta && mid_theta<90){
 					case 117: printf("degree_data_2 sended -> %d\n", line_distance_data2);
 						serialPutchar (fd, (unsigned char)line_distance_data2);
 						break;
+
+
+					case 118: printf("line degree? ");
+						filter_milk_and_line();
+						if(detect_ball_line() == 1){ // line detected	
+							int degree_data=0;
+							if(mid_theta<-40){
+								degree_data=1;
+							}
+							else if(-40<=mid_theta && mid_theta<-35){
+								degree_data=2;
+							}
+else if(-35<=mid_theta && mid_theta<-30){
+								degree_data=3;
+							}
+else if(-30<=mid_theta && mid_theta<-25){
+								degree_data=4;
+							}
+else if(-25<=mid_theta && mid_theta<-20){
+								degree_data=5;
+							}
+else if(-20<=mid_theta && mid_theta<-15){
+								degree_data=6;
+							}
+else if(-15<=mid_theta && mid_theta<-10){
+								degree_data=7;
+							}
+else if(-10<=mid_theta && mid_theta<-5){
+								degree_data=8;
+							}
+else if(-5<=mid_theta && mid_theta<5){
+								degree_data=9;
+								distance_data = (HEIGHT-pt_mid)/2 + 160;
+							}
+else if(5<=mid_theta && mid_theta<10){
+								degree_data=10;
+							}
+else if(10<=mid_theta && mid_theta<15){
+								degree_data=11;
+							}
+else if(15<=mid_theta && mid_theta<20){
+								degree_data=12;
+							}
+else if(20<=mid_theta && mid_theta<25){
+								degree_data=13;
+							}
+else if(25<=mid_theta && mid_theta<30){
+								degree_data=14;
+							}
+else if(30<=mid_theta && mid_theta<35){
+								degree_data=15;
+							}
+else if(35<=mid_theta && mid_theta<40){
+								degree_data=16;
+							}
+else if(40<=mid_theta){
+								degree_data=17;
+							}
+							// send degree
+							
+							degree_data += 192;
+							printf("%f (%d)\n", mid_theta, degree_data-192);
+							serialPutchar (fd, (unsigned char)degree_data); 
+
+						}
+						else{
+							printf("Not detected\n");
+							serialPutchar (fd, (unsigned char)128); 
+						}
+						break;
+					case 119: printf("line_distance sended -> %d\n", distance_data-160);
+						serialPutchar (fd, (unsigned char)distance_data);
+						break;
+
 
 					default: printf("\n"); break;
 				}
@@ -661,12 +759,12 @@ void make_windows(){
 	moveWindow(control_line, 1441, 400);
 	createTrackbar("line_thres:", control_line, &lineThreshold, 320, ThresRefresh);
 	createTrackbar("vote_thres:", control_line, &voteThreshold, 320, ThresRefresh);
-	createTrackbar("line_thres:2", control_line, &lineThreshold, 320, ThresRefresh);
-	createTrackbar("vote_thres:2", control_line, &voteThreshold, 320, ThresRefresh);
-	createTrackbar("width_min(down):", control_line, &lineThreshold, 320, ThresRefresh);
-	createTrackbar("width_max(down):", control_line, &voteThreshold, 320, ThresRefresh);
-	createTrackbar("height_min(down):", control_line, &lineThreshold, 320, ThresRefresh);
-	createTrackbar("height_max(down):", control_line, &voteThreshold, 320, ThresRefresh);
+	createTrackbar("line_thres:2", control_line, &lineThreshold_d, 320, ThresRefresh);
+	createTrackbar("vote_thres:2", control_line, &voteThreshold_d, 320, ThresRefresh);
+	createTrackbar("width_min(down):", control_line, &milk_width_min_d, 320, ThresRefresh);
+	createTrackbar("width_max(down):", control_line, &milk_width_max_d, 320, ThresRefresh);
+	createTrackbar("height_min(down):", control_line, &milk_height_min_d, 240, ThresRefresh);
+	createTrackbar("height_max(down):", control_line, &milk_height_max_d, 240, ThresRefresh);
 
 
 	// Create a "master control"
@@ -690,11 +788,11 @@ void filter_milk_and_line(){
 
 		for (int i = 0; i<HEIGHT; i++) {
 			for (int j = 0; j<WIDTH; j++) {
-				if (src_HSV.at<Vec3b>(i, j).val[0]<lowRedThres || src_HSV.at<Vec3b>(i, j).val[0]>highRedThres) {
+				if (src_HSV.at<Vec3b>(i, j).val[0]<lowRedThres_tmp || src_HSV.at<Vec3b>(i, j).val[0]>highRedThres_tmp) {
 					// find RED
 					int BG_tmp;
 					BG_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[1]) / 2;
-					if ((src.at<Vec3b>(i, j).val[2] - BG_tmp)>diffRedThres) {
+					if ((src.at<Vec3b>(i, j).val[2] - BG_tmp)>diffRedThres_tmp) {
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
 						src_HSV.at<Vec3b>(i, j).val[1] = 0;
 						src_HSV.at<Vec3b>(i, j).val[2] = 255;
@@ -713,11 +811,11 @@ void filter_milk_and_line(){
 						src_line.at<Vec3b>(i, j).val[2] = 0;
 					}
 				}
-				else if (lowGreenThres < src_HSV.at<Vec3b>(i, j).val[0] && src_HSV.at<Vec3b>(i, j).val[0]<highGreenThres) {
+				else if (lowGreenThres_tmp < src_HSV.at<Vec3b>(i, j).val[0] && src_HSV.at<Vec3b>(i, j).val[0]<highGreenThres_tmp) {
 					// find Green
 					int RB_tmp;
 					RB_tmp = (src.at<Vec3b>(i, j).val[0] + src.at<Vec3b>(i, j).val[2]) / 2;
-					if ((src.at<Vec3b>(i, j).val[1] - RB_tmp)>diffGreenThres && src_HSV.at<Vec3b>(i, j).val[0]>saturationThres ) {
+					if ((src.at<Vec3b>(i, j).val[1] - RB_tmp)>diffGreenThres_tmp && src_HSV.at<Vec3b>(i, j).val[0]>saturationThres_tmp ) {
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
 						src_HSV.at<Vec3b>(i, j).val[1] = 255;
 						src_HSV.at<Vec3b>(i, j).val[2] = 0;
@@ -755,7 +853,7 @@ void CannyThreshold(int, void*)
 	blur( src_gray, detected_edges, Size(3,3) );
 
   /// Canny detector
-  Canny( detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size );
+  Canny( detected_edges, detected_edges, lowThreshold_tmp, lowThreshold_tmp*ratio, kernel_size );
 
   /// Using Canny's output as a mask, we display our result
   src_edge = Scalar::all(0);
@@ -866,12 +964,12 @@ int detect_ball_line(){
 		theta_avg = 0, theta_avg2 = 0;
 
 		cv::Mat contours;
-		cv::Canny(src_line, contours, lineThreshold, lineThreshold*ratio);
+		cv::Canny(src_line, contours, lineThreshold_tmp, lineThreshold_tmp*ratio);
 
 		// 선 감지 위한 허프 변환
 		std::vector<cv::Vec2f> lines;
 		cv::HoughLines(contours, lines, 1,PI/180, // 단계별 크기
-					    voteThreshold);  // 투표(vote) 최대 개수
+					    voteThreshold_tmp);  // 투표(vote) 최대 개수
 		
 		// 선 그리기
 		cv::Mat result(contours.rows, contours.cols, CV_8U, cv::Scalar(255));
@@ -1132,7 +1230,17 @@ void load_settings() {
 	fscanf(fp, "%s %d", tmp, &lowThreshold);
 	fscanf(fp, "%s %d", tmp, &lowThreshold_d);
 
-	
+	fscanf(fp, "%s %d", tmp, &lineThreshold);
+	fscanf(fp, "%s %d", tmp, &voteThreshold);
+	fscanf(fp, "%s %d", tmp, &lineThreshold_d);
+	fscanf(fp, "%s %d", tmp, &voteThreshold_d);	
+
+	fscanf(fp, "%s %d", tmp, &milk_width_min_d);
+	fscanf(fp, "%s %d", tmp, &milk_width_max_d);
+	fscanf(fp, "%s %d", tmp, &milk_height_min_d);
+	fscanf(fp, "%s %d", tmp, &milk_height_max_d);
+
+
 
 	fclose(fp);
 
@@ -1181,6 +1289,17 @@ void save_settings() {
 	fprintf(fp, "lowThreshold %d\n", lowThreshold);
 	fprintf(fp, "lowThreshold_d %d\n", lowThreshold_d);
 	
+
+	fprintf(fp, "lineThreshold %d\n", lineThreshold);
+	fprintf(fp, "voteThreshold %d\n", voteThreshold);
+	fprintf(fp, "lineThreshold_d %d\n", lineThreshold_d);
+	fprintf(fp, "voteThreshold_d %d\n", voteThreshold_d);
+
+	fprintf(fp, "milk_width_min_d %d\n", milk_width_min1);
+	fprintf(fp, "milk_width_max_d %d\n", milk_width_max1);
+	fprintf(fp, "milk_height_min_d %d\n", milk_height_min1);
+	fprintf(fp, "milk_height_max_d %d\n", milk_height_max1);
+
 
 	fclose(fp);
 }
