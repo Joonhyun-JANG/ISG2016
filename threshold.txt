@@ -5,8 +5,8 @@ lowGreenThres 31
 highGreenThres 102
 diffGreenThres 39
 diffSaturationThres 0
-lowThreshold 43
-milk_width_min 0
-milk_width_max 44
-milk_height_min 0
-milk_height_max 273
+lowThreshold 0
+milk_width_min 43
+milk_width_max 0
+milk_height_min 44
+milk_height_max 0

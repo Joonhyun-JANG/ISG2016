@@ -25,7 +25,7 @@ using namespace std;
 #define WIDTH 320
 #define HEIGHT 240
 #define PI 3.1415926
-#define ISG_no 19
+#define ISG_no 20
 
 typedef unsigned long DWORD;
 typedef unsigned long int tick32_t;
@@ -348,15 +348,15 @@ else if(75<=mid_theta && mid_theta<90){
 									milk_finded=9+(milk_x_max/107);
 								}
 								//serialPutchar (fd, (unsigned char)128+milk_finded); 
-								printf(" -> %3d(front)");
+								printf(" -> (front)");
 							}
 							else if(look_down == 1){
 								milk_finded=milk_map_down[milk_y_max/40][milk_x_max/80];
 								//serialPutchar (fd, (unsigned char)128+milk_finded); 
-								printf(" -> %3d(down)");
+								printf(" -> (down)");
 							}
-							milk_finded_data1 = 128+milk_finded & (1111<<4);
-							milk_finded_data2 = 192+milk_finded & (1111);
+							milk_finded_data1 = 128+(milk_finded & (15<<4));
+							milk_finded_data2 = 192+(milk_finded & (15));
 							printf("%d // %d %d\n",milk_finded, milk_finded_data1, milk_finded_data2);
 							serialPutchar (fd, (unsigned char)milk_finded_data1);
 						}
