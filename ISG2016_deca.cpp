@@ -48,6 +48,7 @@ VideoCapture cap(0);
 
 Mat src, src_gray, src_HSV, src_ROI, src_line;
 Mat src_edge, detected_edges, src_status, src_control;
+Mat src_ball, src_ball_gray;
 
 // for canny detect
 int edgeThresh = 1, lowThreshold, lowThreshold_d, lowThreshold_tmp, ratio = 3, kernel_size = 3;
@@ -93,6 +94,8 @@ char control_line[15] = "line Adjust";
 int milk_map_front[3][4] = {{9,9,10,10}, {5,6,7,8}, {1,2,3,4}};
 int milk_map_down[6][4] = {{16,17,17,18},{13,14,14,15},{10,11,11,12},{7,8,8,9},{4,5,5,6},{1,2,2,3}};
 
+int cannyThreshold=0, accumulatorThreshold=0;
+
 float theta_avg=0, theta_avg2=0;
 float mid_theta = 0;
 
@@ -115,7 +118,7 @@ void save_settings();
 void filter_milk_and_line();
 void delete_outofline(int line_YN);
 void UpdateFPS();
-
+void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThreshold, int accumulatorThreshold);
 
 /** @function main */
 int main( int argc, char** argv )
@@ -452,7 +455,7 @@ else if(-15<=mid_theta && mid_theta<-5){
 							}
 else if(-5<=mid_theta && mid_theta<5){
 								degree_data=9;
-								distance_data = 192+((pt_mid)/40);
+								distance_data = 192+((HEIGHT-pt_mid)/40);
 								line_distance_data1=128+32+((distance_data&(15<<4)>>4)); 
 								line_distance_data2=192+32+(distance_data&(15));
 							}
@@ -768,6 +771,8 @@ void make_windows(){
 	createTrackbar("width_max(down):", control_line, &milk_width_max_d, 320, ThresRefresh);
 	createTrackbar("height_min(down):", control_line, &milk_height_min_d, 240, ThresRefresh);
 	createTrackbar("height_max(down):", control_line, &milk_height_max_d, 240, ThresRefresh);
+	createTrackbar("cannyThreshold:", control_line, &cannyThreshold, 240, ThresRefresh);
+	createTrackbar("accumulatorThreshold:", control_line, &accumulatorThreshold, 240, ThresRefresh);
 
 
 	// Create a "master control"
@@ -822,6 +827,10 @@ void filter_milk_and_line(){
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
 						src_HSV.at<Vec3b>(i, j).val[1] = 255;
 						src_HSV.at<Vec3b>(i, j).val[2] = 0;
+
+						src_line.at<Vec3b>(i, j).val[0] = 0;
+						src_line.at<Vec3b>(i, j).val[1] = 0;
+						src_line.at<Vec3b>(i, j).val[2] = 0;
 					}
 					else {
 						src_HSV.at<Vec3b>(i, j).val[0] = 0;
@@ -965,6 +974,8 @@ int detect_ball_line(){
 		mid_theta = 0; // real mid line
 		int mid_theta_group = 0;
 		theta_avg = 0, theta_avg2 = 0;
+
+		src_line.copyTo(src_ball);
 
 		cv::Mat contours;
 		cv::Canny(src_line, contours, lineThreshold_tmp, lineThreshold_tmp*ratio);
@@ -1179,7 +1190,7 @@ int detect_ball_line(){
 
 //////////////////////////////////////////////////////////////////////////////////////
 
-/*
+
 	    cvtColor(src_ball, src_ball_gray, COLOR_BGR2GRAY );
 		
 		// Reduce the noise so we avoid false circle detection
@@ -1190,11 +1201,67 @@ int detect_ball_line(){
 
         //runs the detection, and update the display
         HoughDetection(src_ball_gray, src_ball, cannyThreshold, accumulatorThreshold);
-*/
+
+		imshow("ball", src_ball);
 
 	return detect_line;
 }
 
+void HoughDetection(const Mat& src_gray, const Mat& src_display, int cannyThreshold, int accumulatorThreshold)
+{    
+
+				// will hold the results of the detection
+        std::vector<Vec3f> circles;
+        // runs the actual detection
+        HoughCircles( src_gray, circles, CV_HOUGH_GRADIENT, 1, src_gray.rows/8, cannyThreshold, accumulatorThreshold, 0, 0 );
+
+        // clone the colour, input image for displaying purposes
+        Mat display = src_display.clone();
+		printf("%d\n", circles.size());
+
+        int max_radius = 0, max_r_i = 0; // added by joon
+
+		for( size_t i = 0; i < circles.size(); i++ )
+        {
+          int radius = cvRound(circles[i][2]);
+        if(max_radius <= radius){
+							max_radius = radius;
+							max_r_i = i;		
+						}
+        }
+				
+				if(circles.size()>0){
+				    Point center(cvRound(circles[max_r_i][0]), cvRound(circles[max_r_i][1]));
+            int radius = cvRound(circles[max_r_i][2]);
+            // circle centery
+            circle( display, center, 3, Scalar(0,255,0), -1, 8, 0 );
+            // circle outline
+            circle( display, center, radius, Scalar(0,0,255), 3, 8, 0 );
+			line(display, Point2f(WIDTH/2, HEIGHT-1), center, Scalar(0, 255, 255), 1);
+			double ball_degree;
+			if(center.x<=WIDTH/2){
+				if(center.x == WIDTH/2) ball_degree = 0;
+				else ball_degree = (90-atan(((double)HEIGHT-(double)center.y)/((double)WIDTH/2-(double)center.x))*57.3)*(-1);
+				stringstream ss_ball_degree;
+				ss_ball_degree << setprecision(1) << fixed<< ball_degree;
+				string str_ball_degree = ss_ball_degree.str();
+				putText(display, str_ball_degree, Point2f(WIDTH/2 + 10, HEIGHT-10), FONT_HERSHEY_PLAIN, 1.5, Scalar(255, 255, 255), 1, 8, false);
+
+			}
+			else{
+				ball_degree = atan(((double)HEIGHT-(double)center.y)/((double)WIDTH/2-(double)center.x))*57.3+90;
+				stringstream ss_ball_degree;
+				ss_ball_degree << setprecision(1) << fixed<< ball_degree;
+				string str_ball_degree = ss_ball_degree.str();
+				putText(display, str_ball_degree, Point2f(WIDTH/2 + 10, HEIGHT-10), FONT_HERSHEY_PLAIN, 1.5, Scalar(255, 255, 255), 1, 8, false);
+			}
+
+			}
+
+        // shows the results
+		
+        imshow("find_ball", display);
+}
 
 void load_settings() {
 	char tmp[25];
